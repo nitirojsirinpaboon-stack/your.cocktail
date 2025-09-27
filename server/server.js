@@ -9,19 +9,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Debug: check if API key is loaded
+// Debug log: ตรวจสอบว่าโหลด API key ได้ไหม
 console.log("OPENAI_API_KEY loaded?", !!process.env.OPENAI_API_KEY);
-console.log("First 8 chars:", process.env.OPENAI_API_KEY?.slice(0, 8));
 
-// Create OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Route ทดสอบ
 app.get("/", (req, res) => {
   res.send("Cocktail Generator API is running!");
 });
 
+// Route generate cocktail
 app.post("/generate", async (req, res) => {
   const { name } = req.body;
 
@@ -32,29 +32,4 @@ app.post("/generate", async (req, res) => {
   - "reason": เหตุผลที่ตั้งชื่อนั้น (ไม่เกิน 2-3 บรรทัด)
   - "color": สีของค็อกเทลเป็นภาษาอังกฤษ (เช่น "Red", "Blue", "Green")
   - "alcoholLevel": ระดับแอลกอฮอล์ ("Low", "Medium", "High")
-  - "taste": รสชาติ ("Sweet", "Sour", "Bitter", "Fruity")
-  - "recipe": สูตรผสมแบบขั้นตอน (เป็น Array ของ string)
-
-  ตัวอย่าง JSON output:
-  {
-    "name": "ชื่อค็อกเทล",
-    "reason": "เหตุผลที่ตั้งชื่อ",
-    "color": "สีของค็อกเทล",
-    "alcoholLevel": "ระดับแอลกอฮอล์",
-    "taste": "รสชาติ",
-    "recipe": [
-      "ขั้นตอนที่ 1",
-      "ขั้นตอนที่ 2"
-    ]
-  }
-  `;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-
-    const cocktailData = JSON.parse(response.choices[0].message.content);
-    res.json(cocktai
+  - "taste": รสชาติ ("Sweet", "Sour", "Bitter", "Fru
