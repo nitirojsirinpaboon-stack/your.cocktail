@@ -12,7 +12,7 @@ app.use(express.json());
 // Initialize Google Gemini AI with your API key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+const model = genAI.getGenerativeModel({ model: "models/text-bison-001" });
 
 // Main endpoint
 app.get("/", (req, res) => {
