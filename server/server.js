@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const OpenAI = require("openai");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -9,21 +9,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Google Gemini AI with your API key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-// Main endpoint
 app.get("/", (req, res) => {
   res.send("Cocktail Generator API is running!");
 });
 
-// Endpoint to generate a cocktail
 app.post("/generate", async (req, res) => {
   const { name } = req.body;
-  
-  // Create a prompt for the AI in Thai
+
   const prompt = `
   สร้างข้อมูลค็อกเทลในรูปแบบ JSON โดยใช้ชื่อ "${name}" เป็นแรงบันดาลใจ
   ข้อมูลต้องมีฟิลด์ดังนี้:
@@ -49,17 +45,14 @@ app.post("/generate", async (req, res) => {
   `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo-0125",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+    });
 
-    // Remove markdown code block fences if any
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // Parse the JSON string
-    const cocktail = JSON.parse(text);
-    
-    res.json(cocktail);
+    const cocktailData = JSON.parse(response.choices[0].message.content);
+    res.json(cocktailData);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate cocktail. Please try again." });
