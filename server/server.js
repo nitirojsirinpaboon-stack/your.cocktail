@@ -9,6 +9,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Debug: check if API key is loaded
+console.log("OPENAI_API_KEY loaded?", !!process.env.OPENAI_API_KEY);
+console.log("First 8 chars:", process.env.OPENAI_API_KEY?.slice(0, 8));
+
+// Create OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -52,12 +57,4 @@ app.post("/generate", async (req, res) => {
     });
 
     const cocktailData = JSON.parse(response.choices[0].message.content);
-    res.json(cocktailData);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to generate cocktail. Please try again." });
-  }
-});
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    res.json(cocktai
