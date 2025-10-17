@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ค้นหาเมนูเครื่องดื่ม</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; padding: 20px; background-color: #f4f7f6; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { color: #007bff; text-align: center; }
+        label { display: block; margin-top: 10px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
+        button:hover { background-color: #218838; }
+        #results { margin-top: 25px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background-color: #e9ecef; }
+        .result-item { border: 1px solid #007bff; padding: 15px; border-radius: 6px; background-color: #f8f9fa; margin-bottom: 15px; }
+        .random-item { border: 1px solid #ffc107; background-color: #fff3cd; }
+        .result-name { font-size: 1.2em; color: #007bff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ค้นหาเครื่องดื่มตามชื่อคุณ</h1>
+        <form id="searchForm">
+            <label for="nameInput">ชื่อ input:</label>
+            <input type="text" id="nameInput" name="name" placeholder="ใส่ชื่อของคุณ เช่น พลอย" required>
+            <button type="submit">ค้นหาเมนู</button>
+        </form>
+
+        <div id="results">
+            </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
