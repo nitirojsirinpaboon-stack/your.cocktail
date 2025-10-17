@@ -4,7 +4,7 @@ const path = require('path');
 const cors = require('cors');
 
 const app = express();
-// แก้ไข Syntax Error: ใช้ // สำหรับความคิดเห็นในบรรทัดเดียวกัน
+// PORT 3000 ใช้สำหรับ Local Development
 const PORT = process.env.PORT || 3000; 
 
 // กำหนด path สำหรับไฟล์ข้อมูล
@@ -50,7 +50,6 @@ app.post('/search', (req, res) => {
     }
 
     // 1. แยกคำค้นหา (Tokenization)
-    // ใช้ชื่อเต็มและอักษรตัวแรกของคำค้นหาเป็น Token เพื่อค้นหาแบบ Partial Match
     const searchTokens = searchName.split('');
     const uniqueSearchTokens = Array.from(new Set([searchName, ...searchTokens]));
 
@@ -89,4 +88,22 @@ app.post('/search', (req, res) => {
              message = `ไม่พบเมนูสำหรับชื่อ "${name}" จึงแสดงเมนูแนะนำ (สุ่ม)`;
              found = false; // ยืนยันว่าไม่ใช่การค้นหาที่พบจริง
         } else {
-             message =
+             message = `ไม่พบข้อมูลใดๆ ในระบบ`;
+             found = false;
+        }
+    }
+
+    // ลบฟิลด์ 'keyword' ออกจากผลลัพธ์สุดท้ายก่อนส่งกลับ
+    const output = (finalResults || []).map(({ keyword, ...rest }) => rest);
+    
+    // ส่ง JSON Response กลับไป
+    res.json({ 
+        found: found,
+        message: message,
+        data: output
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
