@@ -8,7 +8,7 @@ document.getElementById('searchForm').addEventListener('submit', async (event) =
     // *****************************************************************
     // *** สำคัญ: ต้องเปลี่ยน 'http://localhost:3000' เป็น URL ของ Render Web Service ของคุณ
     // *****************************************************************
-    const BACKEND_URL = 'http://localhost:3000'; 
+    const BACKEND_URL = 'https://ur-cocktail.onrender.com';
 
     // ฟังก์ชันสำหรับแปลง Level ให้เป็นข้อความ
     const mapLevel = (level) => {

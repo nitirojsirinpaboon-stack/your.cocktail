@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000; 
 
 // กำหนด path สำหรับไฟล์ข้อมูล
-const JSON_FILE_PATH = path.join(__dirname, 'data', 'users.json');
+const JSON_FILE_PATH = path.join(__dirname, 'data', 'user.json');
 
 let userData = [];
 
