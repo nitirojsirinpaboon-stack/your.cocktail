@@ -1,87 +1,114 @@
+// server.js (Backend)
+
+// ***************************************************************
+// *** 1. Modules ที่จำเป็น ***
+// ***************************************************************
 const express = require('express');
-const fs = require('fs');
+const cors = require('cors'); // ใช้สำหรับแก้ไขปัญหา Cross-Origin
 const path = require('path');
-const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 10000; // ใช้ port 10000 ตามที่ Render แนะนำ
 
-const JSON_FILE_PATH = path.join(__dirname, 'data', 'user.json');
-let userData = [];
+// ***************************************************************
+// *** 2. ตั้งค่า CORS (สำคัญมากในการเชื่อมต่อกับ Static Site) ***
+// ***************************************************************
+const allowedOrigins = [
+    // *** เปลี่ยน URL นี้ให้เป็น URL จริงของ Static Site (Frontend) ของคุณบน Render ***
+    'https://your-cocktail-1.onrender.com', 
+    'http://localhost:5500', // สำหรับทดสอบบนเครื่องตัวเอง (ถ้าใช้ Live Server)
+    'http://localhost:3000', // สำหรับทดสอบบนเครื่องตัวเอง (ถ้าใช้ create-react-app)
+];
 
-// ✅ โหลดข้อมูล JSON
-const loadUserData = () => {
-    try {
-        const data = fs.readFileSync(JSON_FILE_PATH, 'utf8');
-        userData = JSON.parse(data);
-        console.log(`✅ Loaded ${userData.length} records from JSON.`);
-    } catch (err) {
-        console.error('❌ Error loading JSON data:', err);
-        userData = []; 
+const corsOptions = {
+  origin: (origin, callback) => {
+    // อนุญาตให้เรียกจาก origins ที่กำหนด, หรือถ้าไม่มี origin (เช่น Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
+  },
+  methods: 'GET,POST',
+  credentials: true,
 };
 
-loadUserData();
-app.use(cors()); 
-app.use(express.json());
+app.use(cors(corsOptions)); // ใช้ CORS middleware
 
-// ✅ ฟังก์ชันสุ่มเลือก 1 รายการ
-const getRandomItem = (array) => {
-    if (!array || array.length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * array.length);
-    return [array[randomIndex]]; 
-};
+// ***************************************************************
+// *** 3. Middleware และการโหลดข้อมูล ***
+// ***************************************************************
 
-// ✅ Endpoint: /search
+app.use(express.json()); // Middleware สำหรับ Parse JSON body
+
+// โหลดข้อมูล JSON จากไฟล์
+const dataPath = path.join(__dirname, 'cocktail_data.json');
+let cocktailData = [];
+
+try {
+    const data = fs.readFileSync(dataPath, 'utf8');
+    cocktailData = JSON.parse(data);
+    console.log(`✅ Loaded ${cocktailData.length} records from JSON.`);
+} catch (error) {
+    console.error('❌ Error loading cocktail data:', error);
+}
+
+// ***************************************************************
+// *** 4. Route หลักสำหรับการค้นหา ***
+// ***************************************************************
+
 app.post('/search', (req, res) => {
     const { name } = req.body;
-    const searchName = name ? name.trim().toLowerCase() : '';
-
-    if (!searchName) {
-        return res.status(400).json({ message: 'กรุณาใส่ชื่อที่ต้องการค้นหา' });
+    
+    if (!name) {
+        return res.status(400).json({ 
+            message: 'กรุณาระบุชื่อค็อกเทลที่ต้องการค้นหา',
+            data: []
+        });
     }
 
-    const searchTokens = searchName.split('');
-    const uniqueSearchTokens = Array.from(new Set([searchName, ...searchTokens]));
+    const searchName = name.toLowerCase().trim();
+    
+    // ค้นหาแบบตรงชื่อ
+    let foundMatches = cocktailData.filter(item => 
+        item.name && item.name.toLowerCase().includes(searchName)
+    );
 
-    let foundResults = [];
-
-    for (const item of userData) {
-        if (item.keyword) {
-            const itemKeywords = item.keyword.toLowerCase().split('|');
-            const isMatch = uniqueSearchTokens.some(token => itemKeywords.includes(token));
-            if (isMatch) foundResults.push(item);
+    // ถ้าไม่พบแบบตรงชื่อ ให้สุ่มเมนู 3 รายการ
+    if (foundMatches.length === 0) {
+        let randomResults = [];
+        const maxRandom = Math.min(3, cocktailData.length); // สุ่มสูงสุด 3 เมนู
+        
+        while (randomResults.length < maxRandom) {
+            const randomIndex = Math.floor(Math.random() * cocktailData.length);
+            const randomItem = cocktailData[randomIndex];
+            
+            // ป้องกันการสุ่มเมนูซ้ำ
+            if (!randomResults.includes(randomItem)) {
+                randomResults.push(randomItem);
+            }
         }
+
+        return res.json({
+            message: `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ 3 รายการนี้สิ!`,
+            data: randomResults,
+            found: false
+        });
     }
 
-    let finalResults = [];
-    let message = '';
-    let found = false;
-
-    if (foundResults.length > 0) {
-        // ✅ ถ้ามีหลายอัน → สุ่มมาแค่ 1
-        const randomIndex = Math.floor(Math.random() * foundResults.length);
-        finalResults = [foundResults[randomIndex]];
-        message = `พบเมนูที่ตรงกับชื่อ: ${name}`;
-        found = true;
-    } else {
-        // ❌ ไม่พบ → สุ่มจากทั้งหมด
-        const randomIndex = Math.floor(Math.random() * userData.length);
-        finalResults = [userData[randomIndex]];
-        message = `ไม่พบเมนูสำหรับชื่อ "${name}" จึงแสดงเมนูแนะนำ (สุ่ม)`;
-        found = false;
-    }
-
-    const output = (finalResults || []).map(({ keyword, ...rest }) => rest);
-
-    res.json({ 
-        found: found,
-        message: message,
-        data: output
+    // ถ้าพบแบบตรงชื่อ
+    return res.json({
+        message: `พบเมนู ${foundMatches.length} รายการที่ตรงกับ "${name}"`,
+        data: foundMatches,
+        found: true
     });
 });
 
-// ✅ Start Server
+
+// ***************************************************************
+// *** 5. เริ่มต้น Server ***
+// ***************************************************************
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });
