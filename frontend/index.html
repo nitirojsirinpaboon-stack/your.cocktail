@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Cocktail Generator</title>
-    <link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css"> </head>
+    <link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=Orbitron&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css"> 
+</head>
 <body>
     <div class="container">
         <h1 class="neon-text">COCKTAIL GENERATOR</h1>
@@ -13,9 +14,11 @@
             <input type="text" id="cocktailName" placeholder="ค้นหาชื่อเมนู หรือลองสุ่ม..." class="neon-input">
             <button id="searchButton" class="neon-button">ค้นหาเมนู</button>
         </div>
+        
         <div id="results" class="results-container">
             <p class="neon-message" id="messageDisplay"></p>
-            <div id="cocktailDetails" class="cocktail-details"></div>
+            <div id="cocktailDetails">
+                </div>
         </div>
     </div>
     <script src="script.js"></script>

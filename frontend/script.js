@@ -1,7 +1,7 @@
 // frontend/script.js
 
 // *****************************************************************
-// *** สำคัญ: URL ของ Render Web Service ของคุณ (ได้รับการแก้ไขแล้ว)
+// *** URL ของ Render Web Service ของคุณ (ได้รับการแก้ไขแล้ว)
 // *****************************************************************
 const BACKEND_URL = 'https://ur-cocktail.onrender.com';
 
@@ -18,25 +18,31 @@ const mapLevel = (level) => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. เลือกองค์ประกอบตาม ID ที่ถูกกำหนดใน index.html (UI นีออน)
-    const cocktailNameInput = document.getElementById('cocktailName');
-    const searchButton = document.getElementById('searchButton');
-    const messageDisplay = document.getElementById('messageDisplay');
-    const cocktailDetailsDiv = document.getElementById('cocktailDetails');
+    // 1. เลือก Element ID ตามโครงสร้าง UI นีออน
+    // เนื่องจาก UI ใหม่ใช้ปุ่มและ Input ID ที่ต่างกัน เราจะใช้ ID ของ UI นีออน
+    const cocktailNameInput = document.getElementById('cocktailName'); // แทน nameInput
+    const searchButton = document.getElementById('searchButton');     // แทน searchForm submit
+    const messageDisplay = document.getElementById('messageDisplay'); // สำหรับข้อความแจ้งเตือน
+    const cocktailDetailsDiv = document.getElementById('cocktailDetails'); // สำหรับแสดงรายละเอียด
 
-    // 2. ตรวจสอบ Event Listener: ผูกกับปุ่มและ Enter Key
-    if (searchButton) {
-        searchButton.addEventListener('click', searchCocktail);
+    if (!cocktailNameInput || !searchButton) {
+        // อาจมีปัญหาที่ index.html ยังไม่ถูกแก้
+        return;
     }
-    if (cocktailNameInput) {
-        cocktailNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                searchCocktail();
-            }
-        });
-    }
+    
+    // ผูก Event Listener กับปุ่ม
+    searchButton.addEventListener('click', searchCocktail);
+    
+    // ผูก Event Listener กับ Enter key
+    cocktailNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            searchCocktail();
+        }
+    });
 
-    async function searchCocktail() {
+    async function searchCocktail(event) {
+        // ไม่ต้องใช้ event.preventDefault() เพราะผูกกับปุ่ม/keypress แทน form submit แล้ว
+        
         const name = cocktailNameInput.value;
         messageDisplay.textContent = 'กำลังค้นหา...';
         cocktailDetailsDiv.innerHTML = ''; // เคลียร์ผลลัพธ์เก่า
@@ -52,45 +58,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: name }),
+                body: JSON.stringify({ name }),
             });
 
             const data = await response.json();
 
+            // ใช้ Element ที่ถูกสร้างขึ้นใหม่ตาม UI นีออน
             if (response.ok) {
-                // แสดงข้อความแจ้งเตือน (พบ/ไม่พบ/สุ่ม)
-                messageDisplay.textContent = data.message; 
-                
-                if (data.data && data.data.length > 0) {
-                    const cocktail = data.data[0]; 
-                    
-                    // กำหนดสีของ Level โดยใช้ CSS class (ใช้สไตล์นีออนที่กำหนดไว้ใน style.css)
-                    // ถ้า Backend มีฟิลด์ 'level', ให้แปลงเป็นข้อความ
-                    const levelText = mapLevel(cocktail.level);
-                    
-                    // สร้าง HTML สำหรับแสดงผลลัพธ์เดียว (เพราะ Backend สุ่มมา 1 อัน)
-                    cocktailDetailsDiv.innerHTML = `
-                        <h3>${cocktail.name || 'N/A'}</h3>
-                        <p><strong>Level:</strong> ${levelText}</p>
-                        <p><strong>ประเภท:</strong> ${cocktail.category || 'N/A'}</p>
-                        <p><strong>สี:</strong> ${cocktail.color || 'N/A'}</p>
-                        <p><strong>ส่วนผสม:</strong> ${cocktail.ingredients || 'N/A'}</p>
-                        <p><strong>คำแนะนำ:</strong> ${cocktail.instructions || 'N/A'}</p>
-                    `;
-                    
-                } else {
-                    cocktailDetailsDiv.innerHTML = '<p>ไม่พบข้อมูลเมนูที่ต้องการแสดง</p>';
-                }
+                messageDisplay.textContent = data.message;
+                let html = ''; 
 
+                if (data.data && data.data.length > 0) {
+                    data.data.forEach(item => {
+                        // ใช้ class เพื่อให้เข้ากับ style.css นีออน
+                        const itemClass = data.found ? 'cocktail-item found-match' : 'cocktail-item random-item';
+                        
+                        // ** แสดงผลลัพธ์แบบเต็มตาม Logic เดิม (มีการวนลูป)**
+                        html += `<div class="${itemClass}">
+                                    <h3 class="neon-result-name">${item.name || 'N/A'}</h3>
+                                    <hr class="neon-divider">
+                                    <p><strong>Description:</strong> ${item.description || 'N/A'}</p>
+                                    <p><strong>สี:</strong> ${item.color || 'N/A'}</p>
+                                    <p><strong>Level:</strong> ${mapLevel(item.level)}</p>
+                                    <p><strong>Base on:</strong> ${item['base on'] || 'N/A'}</p>
+                                </div>`;
+                    });
+                } else {
+                    html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
+                }
+                
+                cocktailDetailsDiv.innerHTML = html; // แสดงผลลัพธ์ใน div รายละเอียด
+                
             } else {
-                // กรณี Server ส่ง Error Code กลับมา (เช่น 400)
+                // กรณี Server ส่ง Error Code กลับมา
                 messageDisplay.textContent = `Error: ${data.message || 'เกิดข้อผิดพลาดกับเซิร์ฟเวอร์'}`;
             }
-
         } catch (error) {
             console.error('Fetch error:', error);
             messageDisplay.textContent = 'ไม่สามารถเชื่อมต่อกับ Server ได้';
-            // เคลียร์ข้อมูลเก่า
             cocktailDetailsDiv.innerHTML = ''; 
         }
     }
