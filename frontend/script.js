@@ -21,16 +21,14 @@ const mapLevel = (level) => {
 const getColorIconHtml = (colorName) => {
     const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
     
-    // ***************************************************************
-    // *** แก้ไข: เพิ่มการตรวจสอบคำภาษาอังกฤษเพื่อรองรับข้อมูลจาก Server ***
-    // ***************************************************************
+    // แก้ไข: เพิ่มการตรวจสอบคำภาษาอังกฤษเพื่อรองรับข้อมูลจาก Server เช่น 'coral pink'
     if (safeColorName.includes('แดง') || safeColorName.includes('red')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
     if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน') || safeColorName.includes('blue')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
     if (safeColorName.includes('เขียว') || safeColorName.includes('green')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
     if (safeColorName.includes('เหลือง') || safeColorName.includes('yellow')) return `<span class="color-icon color-yellow" title="สีเหลือง"></span>`;
     if (safeColorName.includes('ส้ม') || safeColorName.includes('orange')) return `<span class="color-icon color-orange" title="สีส้ม"></span>`;
     if (safeColorName.includes('ม่วง') || safeColorName.includes('purple')) return `<span class="color-icon color-purple" title="สีม่วง"></span>`;
-    if (safeColorName.includes('ชมพู') || safeColorName.includes('pink')) return `<span class="color-icon color-pink" title="สีชมพู"></span>`; // แก้ไขให้รองรับ 'coral pink'
+    if (safeColorName.includes('ชมพู') || safeColorName.includes('pink')) return `<span class="color-icon color-pink" title="สีชมพู"></span>`; 
     if (safeColorName.includes('ขาว') || safeColorName.includes('white')) return `<span class="color-icon color-white" title="สีขาว"></span>`;
     if (safeColorName.includes('ดำ') || safeColorName.includes('black')) return `<span class="color-icon color-black" title="สีดำ"></span>`;
     if (safeColorName.includes('ใส') || safeColorName.includes('transparent')) return `<span class="color-icon color-transparent" title="สีใส"></span>`;
@@ -82,16 +80,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (response.ok) {
-                messageDisplay.textContent = data.message;
                 let html = ''; 
 
                 if (data.data && data.data.length > 0) {
+                    // ถ้าเจอข้อมูล: ใช้ข้อความจาก Server
+                    messageDisplay.textContent = data.message;
+                    
                     data.data.forEach(item => {
                         const itemClass = data.found ? 'cocktail-item found-match' : 'cocktail-item random-item';
                         const levelText = mapLevel(item.level); 
-                        const colorHtml = getColorIconHtml(item.color); // ไอคอนสี
+                        const colorHtml = getColorIconHtml(item.color);
                         
-                        // แสดงผลลัพธ์: ไอคอนสี (ถ้ามี) ตามด้วยชื่อสีจริงจาก item.color
+                        // แสดงผลลัพธ์
                         html += `<div class="${itemClass}">
                                     <h3 class="neon-result-name">${item.name || 'N/A'}</h3>
                                     <hr class="neon-divider">
@@ -104,6 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>`;
                     });
                 } else {
+                    // ถ้าไม่พบข้อมูล: ใช้ข้อความที่แก้ไขใหม่
+                    messageDisplay.textContent = `ไม่พบเมนูสำหรับชื่อ "${name}"`;
                     html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
                 }
                 
