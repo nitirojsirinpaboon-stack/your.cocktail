@@ -17,11 +17,11 @@ const mapLevel = (level) => {
     return levelMap[String(level)] || 'ไม่ระบุ'; 
 };
 
-// ฟังก์ชันสำหรับสร้าง HTML ไอคอนสี (คืนค่าเฉพาะไอคอนเท่านั้น เพื่อป้องกันการแสดงชื่อสีซ้ำซ้อน)
+// ฟังก์ชันสำหรับสร้าง HTML ไอคอนสี (คืนค่าเฉพาะไอคอนเท่านั้น!)
 const getColorIconHtml = (colorName) => {
     const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
     
-    // ตรวจสอบสีสำคัญ (ใช้คำที่อยู่ในข้อมูลของคุณ)
+    // ตรวจสอบสีสำคัญ
     if (safeColorName.includes('แดง')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
     if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
     if (safeColorName.includes('เขียว')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
@@ -40,7 +40,6 @@ const getColorIconHtml = (colorName) => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // เลือก Element ID ตามโครงสร้าง UI นีออน
     const cocktailNameInput = document.getElementById('cocktailName');
     const searchButton = document.getElementById('searchButton');
     const messageDisplay = document.getElementById('messageDisplay');
