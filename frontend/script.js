@@ -1,39 +1,43 @@
 // frontend/script.js
 
-// *****************************************************************
-// *** URL ของ Render Web Service ของคุณ (ได้รับการแก้ไขแล้ว)
-// *****************************************************************
-const BACKEND_URL = 'https://ur-cocktail.onrender.com';
+// ... (โค้ดส่วนบน mapLevel และ BACKEND_URL) ...
 
-// ฟังก์ชันสำหรับแปลง Level ให้เป็นข้อความ
-const mapLevel = (level) => {
-    const levelMap = {
-        '0': 'NoL (ไม่มีแอลกอฮอล์)',
-        '1': 'Weak (เบาๆ)',
-        '2': 'SoSo (กลางๆ)',
-        '3': 'Strong (เข้มข้น)',
-        '4': 'Hard Core (หนักมาก)'
-    };
-    return levelMap[String(level)] || 'ไม่ระบุ'; 
+// ฟังก์ชันสำหรับสร้าง HTML ไอคอนสี
+const getColorIconHtml = (colorName) => {
+    // แปลงชื่อสีให้เป็น class ที่ใช้ได้ใน CSS
+    const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
+    
+    // ตรวจสอบสีพิเศษ
+    if (safeColorName.includes('แดง')) return `<span class="color-icon color-red" title="สีแดง"></span> สีแดง`;
+    if (safeColorName.includes('ฟ้า')) return `<span class="color-icon color-blue" title="สีฟ้า"></span> สีฟ้า`;
+    if (safeColorName.includes('น้ำเงิน')) return `<span class="color-icon color-blue" title="สีน้ำเงิน"></span> สีน้ำเงิน`;
+    if (safeColorName.includes('เขียว')) return `<span class="color-icon color-green" title="สีเขียว"></span> สีเขียว`;
+    if (safeColorName.includes('เหลือง')) return `<span class="color-icon color-yellow" title="สีเหลือง"></span> สีเหลือง`;
+    if (safeColorName.includes('ส้ม')) return `<span class="color-icon color-orange" title="สีส้ม"></span> สีส้ม`;
+    if (safeColorName.includes('ม่วง')) return `<span class="color-icon color-purple" title="สีม่วง"></span> สีม่วง`;
+    if (safeColorName.includes('ชมพู')) return `<span class="color-icon color-pink" title="สีชมพู"></span> สีชมพู`;
+    if (safeColorName.includes('ขาว')) return `<span class="color-icon color-white" title="สีขาว"></span> สีขาว`;
+    if (safeColorName.includes('ดำ')) return `<span class="color-icon color-black" title="สีดำ"></span> สีดำ`;
+    if (safeColorName.includes('ใส')) return `<span class="color-icon color-transparent" title="สีใส"></span> สีใส`; // สำหรับไม่มีสี
+    if (safeColorName.includes('น้ำตาล')) return `<span class="color-icon color-brown" title="สีน้ำตาล"></span> สีน้ำตาล`;
+    if (safeColorName.includes('เทา')) return `<span class="color-icon color-gray" title="สีเทา"></span> สีเทา`;
+    // สามารถเพิ่มสีอื่น ๆ ได้ตามต้องการ
+    
+    // ถ้าไม่ตรงกับสีที่กำหนด ให้แสดงเป็นชื่อสีธรรมดา
+    return colorName || 'N/A';
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. เลือก Element ID ตามโครงสร้าง UI นีออน
-    // เนื่องจาก UI ใหม่ใช้ปุ่มและ Input ID ที่ต่างกัน เราจะใช้ ID ของ UI นีออน
-    const cocktailNameInput = document.getElementById('cocktailName'); // แทน nameInput
-    const searchButton = document.getElementById('searchButton');     // แทน searchForm submit
-    const messageDisplay = document.getElementById('messageDisplay'); // สำหรับข้อความแจ้งเตือน
-    const cocktailDetailsDiv = document.getElementById('cocktailDetails'); // สำหรับแสดงรายละเอียด
+    const cocktailNameInput = document.getElementById('cocktailName');
+    const searchButton = document.getElementById('searchButton');
+    const messageDisplay = document.getElementById('messageDisplay');
+    const cocktailDetailsDiv = document.getElementById('cocktailDetails');
 
     if (!cocktailNameInput || !searchButton) {
-        // อาจมีปัญหาที่ index.html ยังไม่ถูกแก้
         return;
     }
     
-    // ผูก Event Listener กับปุ่ม
     searchButton.addEventListener('click', searchCocktail);
-    
-    // ผูก Event Listener กับ Enter key
     cocktailNameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             searchCocktail();
@@ -41,11 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function searchCocktail(event) {
-        // ไม่ต้องใช้ event.preventDefault() เพราะผูกกับปุ่ม/keypress แทน form submit แล้ว
-        
         const name = cocktailNameInput.value;
         messageDisplay.textContent = 'กำลังค้นหา...';
-        cocktailDetailsDiv.innerHTML = ''; // เคลียร์ผลลัพธ์เก่า
+        cocktailDetailsDiv.innerHTML = ''; 
 
         if (!name.trim()) {
             messageDisplay.textContent = 'กรุณาใส่ชื่อที่ต้องการค้นหา';
@@ -63,23 +65,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
 
-            // ใช้ Element ที่ถูกสร้างขึ้นใหม่ตาม UI นีออน
             if (response.ok) {
                 messageDisplay.textContent = data.message;
                 let html = ''; 
 
                 if (data.data && data.data.length > 0) {
                     data.data.forEach(item => {
-                        // ใช้ class เพื่อให้เข้ากับ style.css นีออน
                         const itemClass = data.found ? 'cocktail-item found-match' : 'cocktail-item random-item';
-                        
-                        // ** แสดงผลลัพธ์แบบเต็มตาม Logic เดิม (มีการวนลูป)**
+                        const levelText = mapLevel(item.level); // ใช้ mapLevel เหมือนเดิม
+                        const colorHtml = getColorIconHtml(item.color); // ใช้ฟังก์ชันใหม่สำหรับสี
+
                         html += `<div class="${itemClass}">
                                     <h3 class="neon-result-name">${item.name || 'N/A'}</h3>
                                     <hr class="neon-divider">
                                     <p><strong>Description:</strong> ${item.description || 'N/A'}</p>
-                                    <p><strong>สี:</strong> ${item.color || 'N/A'}</p>
-                                    <p><strong>Level:</strong> ${mapLevel(item.level)}</p>
+                                    <p><strong>สี:</strong> ${colorHtml}</p> 
+                                    <p><strong>Level:</strong> ${levelText}</p>
                                     <p><strong>Base on:</strong> ${item['base on'] || 'N/A'}</p>
                                 </div>`;
                     });
@@ -87,10 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
                 }
                 
-                cocktailDetailsDiv.innerHTML = html; // แสดงผลลัพธ์ใน div รายละเอียด
+                cocktailDetailsDiv.innerHTML = html;
                 
             } else {
-                // กรณี Server ส่ง Error Code กลับมา
                 messageDisplay.textContent = `Error: ${data.message || 'เกิดข้อผิดพลาดกับเซิร์ฟเวอร์'}`;
             }
         } catch (error) {
