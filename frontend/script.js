@@ -21,19 +21,21 @@ const mapLevel = (level) => {
 const getColorIconHtml = (colorName) => {
     const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
     
-    // ตรวจสอบสีสำคัญ
-    if (safeColorName.includes('แดง')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
-    if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
-    if (safeColorName.includes('เขียว')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
-    if (safeColorName.includes('เหลือง')) return `<span class="color-icon color-yellow" title="สีเหลือง"></span>`;
-    if (safeColorName.includes('ส้ม')) return `<span class="color-icon color-orange" title="สีส้ม"></span>`;
-    if (safeColorName.includes('ม่วง')) return `<span class="color-icon color-purple" title="สีม่วง"></span>`;
-    if (safeColorName.includes('ชมพู')) return `<span class="color-icon color-pink" title="สีชมพู"></span>`;
-    if (safeColorName.includes('ขาว')) return `<span class="color-icon color-white" title="สีขาว"></span>`;
-    if (safeColorName.includes('ดำ')) return `<span class="color-icon color-black" title="สีดำ"></span>`;
-    if (safeColorName.includes('ใส')) return `<span class="color-icon color-transparent" title="สีใส"></span>`;
-    if (safeColorName.includes('น้ำตาล')) return `<span class="color-icon color-brown" title="สีน้ำตาล"></span>`;
-    if (safeColorName.includes('เทา')) return `<span class="color-icon color-gray" title="สีเทา"></span>`;
+    // ***************************************************************
+    // *** แก้ไข: เพิ่มการตรวจสอบคำภาษาอังกฤษเพื่อรองรับข้อมูลจาก Server ***
+    // ***************************************************************
+    if (safeColorName.includes('แดง') || safeColorName.includes('red')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
+    if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน') || safeColorName.includes('blue')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
+    if (safeColorName.includes('เขียว') || safeColorName.includes('green')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
+    if (safeColorName.includes('เหลือง') || safeColorName.includes('yellow')) return `<span class="color-icon color-yellow" title="สีเหลือง"></span>`;
+    if (safeColorName.includes('ส้ม') || safeColorName.includes('orange')) return `<span class="color-icon color-orange" title="สีส้ม"></span>`;
+    if (safeColorName.includes('ม่วง') || safeColorName.includes('purple')) return `<span class="color-icon color-purple" title="สีม่วง"></span>`;
+    if (safeColorName.includes('ชมพู') || safeColorName.includes('pink')) return `<span class="color-icon color-pink" title="สีชมพู"></span>`; // แก้ไขให้รองรับ 'coral pink'
+    if (safeColorName.includes('ขาว') || safeColorName.includes('white')) return `<span class="color-icon color-white" title="สีขาว"></span>`;
+    if (safeColorName.includes('ดำ') || safeColorName.includes('black')) return `<span class="color-icon color-black" title="สีดำ"></span>`;
+    if (safeColorName.includes('ใส') || safeColorName.includes('transparent')) return `<span class="color-icon color-transparent" title="สีใส"></span>`;
+    if (safeColorName.includes('น้ำตาล') || safeColorName.includes('brown')) return `<span class="color-icon color-brown" title="สีน้ำตาล"></span>`;
+    if (safeColorName.includes('เทา') || safeColorName.includes('gray')) return `<span class="color-icon color-gray" title="สีเทา"></span>`;
     
     // คืนค่าว่างเปล่าถ้าไม่ตรงกับสีที่กำหนด
     return ''; 
