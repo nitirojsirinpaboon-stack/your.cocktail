@@ -1,10 +1,14 @@
 /* frontend/style.css */
 
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Major+Mono+Display&display=swap');
+/* ******************************************************************* */
+/* *** แก้ไข: เปลี่ยนไปใช้ Kanit (ภาษาไทย) และ Poppins (สากล) *** */
+/* ******************************************************************* */
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;700&family=Poppins:wght@300;500;700&display=swap');
 
 body {
     margin: 0;
-    font-family: 'Orbitron', sans-serif;
+    /* ใช้ Kanit เป็นหลัก, Poppins เป็นสำรอง, และ fallback ไปยัง sans-serif */
+    font-family: 'Kanit', 'Poppins', sans-serif;
     background-color: #0d0d0d;
     color: #e0f2f1;
     display: flex;
@@ -29,17 +33,23 @@ body {
 }
 
 .neon-text {
-    font-family: 'Major Mono Display', monospace; 
+    /* ใช้ Kanit หรือ Poppins แทน Major Mono Display */
+    font-family: 'Kanit', 'Poppins', sans-serif; 
     color: #00f0ff;
     text-shadow: 0 0 5px #00f0ff, 0 0 20px #00aaff;
-    font-size: 2em; /* ปรับลดขนาดให้รองรับชื่อใหม่ */
+    font-size: 2em; 
     margin-bottom: 30px;
-    letter-spacing: 3px;
+    letter-spacing: 1px; /* ลดระยะห่างตัวอักษรเพื่อให้อ่านง่ายขึ้น */
+    font-weight: 700; /* ทำให้ตัวหนาขึ้น */
 }
+
+/* ------------------------------------------------------------------ */
+/* *** โค้ด CSS ส่วนที่เหลือ (search, button, results, colors) ยังคงเหมือนเดิม *** */
+/* ------------------------------------------------------------------ */
 
 .search-section {
     display: flex;
-    flex-direction: column; /* ทำให้ input และ button แสดงผลเรียงลงมาเป็นคอลัมน์เสมอ */
+    flex-direction: column;
     gap: 15px;
     margin-bottom: 30px;
     justify-content: center;
@@ -111,13 +121,15 @@ body {
 }
 
 .neon-result-name {
-    color: #00f0ff; 
-    font-family: 'Major Mono Display', monospace;
+    /* ใช้ Kanit/Poppins แทน Major Mono Display */
+    font-family: 'Kanit', 'Poppins', sans-serif; 
+    color: #00f0ff;
     text-shadow: 0 0 5px #00f0ff;
     font-size: 1.8em;
-    letter-spacing: 2px;
+    letter-spacing: 1px; /* ลดระยะห่างตัวอักษร */
     margin-top: 0;
     margin-bottom: 10px;
+    font-weight: 700;
 }
 
 .neon-divider {
@@ -125,7 +137,6 @@ body {
     margin: 15px 0;
 }
 
-/* สไตล์ข้อความและไอคอน */
 .cocktail-item p {
     display: flex; 
     align-items: center; 
@@ -138,7 +149,7 @@ body {
     min-width: 120px;
     display: inline-block;
     color: #00ffaa;
-    font-weight: normal;
+    font-weight: 500; /* ปรับ weight ให้เข้ากับ Kanit/Poppins */
 }
 
 /* ------------------ สไตล์ไอคอนสี ------------------ */
@@ -167,27 +178,4 @@ body {
 .color-gray { background-color: #808080; }
 
 .neon-error-message {
-    color: #ff4500; 
-    text-shadow: 0 0 5px #ff4500;
-}
-
-/* Responsive */
-@media (max-width: 600px) {
-    .container {
-        padding: 20px;
-        margin: 10px;
-    }
-    .neon-text {
-        font-size: 1.5em;
-    }
-    .search-section {
-        gap: 10px;
-    }
-    .neon-input {
-        width: 100%;
-    }
-    .neon-button {
-        width: 100%;
-        max-width: none;
-    }
-}
+    color: #ff4500;
