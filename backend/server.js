@@ -1,87 +1,173 @@
+// server.js (Backend)
+
+// ***************************************************************
+// *** 1. Modules ที่จำเป็น ***
+// ***************************************************************
 const express = require('express');
-const fs = require('fs');
+const cors = require('cors'); 
 const path = require('path');
-const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 10000; 
 
-const JSON_FILE_PATH = path.join(__dirname, 'data', 'user.json');
-let userData = [];
-
-// ✅ โหลดข้อมูล JSON
-const loadUserData = () => {
-    try {
-        const data = fs.readFileSync(JSON_FILE_PATH, 'utf8');
-        userData = JSON.parse(data);
-        console.log(`✅ Loaded ${userData.length} records from JSON.`);
-    } catch (err) {
-        console.error('❌ Error loading JSON data:', err);
-        userData = []; 
-    }
-};
-
-loadUserData();
+// ***************************************************************
+// *** 2. การตั้งค่า User History และการโหลดข้อมูลหลัก ***
+// ***************************************************************
 app.use(cors()); 
-app.use(express.json());
+app.use(express.json()); 
 
-// ✅ ฟังก์ชันสุ่มเลือก 1 รายการ
-const getRandomItem = (array) => {
-    if (!array || array.length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * array.length);
-    return [array[randomIndex]]; 
+// ตำแหน่งเก็บข้อมูลประวัติผู้ใช้ (user_history)
+const USER_HISTORY_DIR = path.join(__dirname, 'user_history'); 
+
+// โหลดข้อมูล JSON หลักจากไฟล์ (user.json)
+const dataPath = path.join(__dirname, 'data', 'user.json'); 
+let cocktailData = []; 
+
+try {
+    const data = fs.readFileSync(dataPath, 'utf8');
+    cocktailData = JSON.parse(data);
+    console.log(`✅ Loaded ${cocktailData.length} records from JSON (data/user.json).`);
+
+    // สร้างโฟลเดอร์เก็บประวัติผู้ใช้หากยังไม่มี
+    if (!fs.existsSync(USER_HISTORY_DIR)) {
+        fs.mkdirSync(USER_HISTORY_DIR);
+        console.log(`💡 Created directory: ${USER_HISTORY_DIR}`);
+    }
+} catch (error) {
+    console.error('❌ Error loading critical data:', error);
+    console.error(`*** CRITICAL: Could not find data file at: ${dataPath} ***`); 
+}
+
+
+// ***************************************************************
+// *** 3. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
+// ***************************************************************
+
+// โหลดประวัติผู้ใช้
+const getUserHistory = (userId) => {
+    const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
+    try {
+        const data = fs.readFileSync(userFilePath, 'utf8');
+        return JSON.parse(data); 
+    } catch (error) {
+        // หากไฟล์ไม่มีอยู่ หรือเกิด Error ในการอ่าน/Parse
+        return { recommendedLevels: [] }; // คืนค่าเริ่มต้น
+    }
 };
 
-// ✅ Endpoint: /search
+// บันทึกประวัติผู้ใช้
+const saveUserHistory = (userId, history) => {
+    const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
+    try {
+        fs.writeFileSync(userFilePath, JSON.stringify(history, null, 2), 'utf8');
+    } catch (error) {
+        console.error(`❌ WARNING: Failed to save history for user ${userId}.`, error.message);
+    }
+};
+
+
+// ***************************************************************
+// *** 4. Route หลักสำหรับการค้นหา ***
+// ***************************************************************
+
 app.post('/search', (req, res) => {
-    const { name } = req.body;
-    const searchName = name ? name.trim().toLowerCase() : '';
-
-    if (!searchName) {
-        return res.status(400).json({ message: 'กรุณาใส่ชื่อที่ต้องการค้นหา' });
+    if (cocktailData.length === 0) {
+        return res.status(503).json({ 
+            message: 'Server Error: ไม่สามารถโหลดข้อมูลค็อกเทลได้',
+            data: []
+        });
+    }
+    
+    // ดึง name และ userId
+    const { name, userId } = req.body;
+    
+    if (!name || !userId) {
+        return res.status(400).json({ 
+            message: 'กรุณาระบุชื่อและ User ID',
+            data: []
+        });
     }
 
-    const searchTokens = searchName.split('');
-    const uniqueSearchTokens = Array.from(new Set([searchName, ...searchTokens]));
+    const searchName = name.toLowerCase().trim();
+    
+    // ค้นหาแบบตรงชื่อ
+    let foundMatches = cocktailData.filter(item => 
+        item.name && item.name.toLowerCase().includes(searchName)
+    );
 
-    let foundResults = [];
+    // ***************************************************************
+    // *** Smart Random Recommendation Logic ***
+    // ***************************************************************
+    if (foundMatches.length === 0) {
+        
+        const userHistory = getUserHistory(userId);
+        // Level ที่เคยแนะนำให้ผู้ใช้คนนี้ไปแล้ว
+        const recommendedLevels = new Set(userHistory.recommendedLevels.map(String)); 
+        let randomResults = [];
+        let availablePool = [...cocktailData]; // Pool สำหรับสุ่ม
+        const maxRandom = 3; 
+        
+        // 1. กรองเมนูที่มี Level ที่ไม่เคยแนะนำให้ผู้ใช้คนนี้ (Level ที่ยังไม่ได้ลอง)
+        const unseenCocktails = availablePool.filter(item => !recommendedLevels.has(String(item.level)));
+        
+        // 2. ถ้ามีเมนูที่ Level ไม่เคยแนะนำ ให้สุ่มจากกลุ่มนั้นก่อน (เน้นความหลากหลาย)
+        if (unseenCocktails.length > 0) {
+            let tempUnseen = [...unseenCocktails];
+            let levelsFoundInSession = new Set(); // ป้องกันการสุ่ม Level ซ้ำใน 3 รายการนี้
+            
+            while (randomResults.length < maxRandom && tempUnseen.length > 0) {
+                const randomIndex = Math.floor(Math.random() * tempUnseen.length);
+                const randomItem = tempUnseen[randomIndex];
+                const itemLevel = String(randomItem.level);
 
-    for (const item of userData) {
-        if (item.keyword) {
-            const itemKeywords = item.keyword.toLowerCase().split('|');
-            const isMatch = uniqueSearchTokens.some(token => itemKeywords.includes(token));
-            if (isMatch) foundResults.push(item);
+                // ถ้า Level นี้ยังไม่เคยถูกแนะนำใน 3 รายการนี้ และยังไม่ได้อยู่ในประวัติ (เงื่อนไขที่ 1)
+                if (!levelsFoundInSession.has(itemLevel)) {
+                    randomResults.push(randomItem);
+                    levelsFoundInSession.add(itemLevel);
+                    // บันทึก Level นี้ลงในประวัติผู้ใช้ (เพื่อใช้ในการค้นหาครั้งถัดไป)
+                    userHistory.recommendedLevels.push(itemLevel); 
+                }
+                tempUnseen.splice(randomIndex, 1); // ลบออกจาก pool ชั่วคราว
+            }
         }
+
+        // 3. ถ้ายังได้ไม่ครบ 3 (เพราะ Level ไม่ครบลูปแล้ว) ให้สุ่มรายการที่เหลือเข้ามาเติม
+        if (randomResults.length < maxRandom) {
+            // กรองรายการที่ยังไม่ถูกเลือกเข้ามาใน randomResults
+            const remainingPool = availablePool.filter(item => !randomResults.includes(item));
+            let tempRemaining = [...remainingPool];
+            
+            while (randomResults.length < maxRandom && tempRemaining.length > 0) {
+                const randomIndex = Math.floor(Math.random() * tempRemaining.length);
+                randomResults.push(tempRemaining[randomIndex]);
+                tempRemaining.splice(randomIndex, 1);
+            }
+        }
+        
+        // 4. บันทึกประวัติผู้ใช้ลงในไฟล์
+        saveUserHistory(userId, userHistory);
+
+        return res.json({
+            message: `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ ${randomResults.length} รายการที่เหมาะกับคุณสิ!`,
+            data: randomResults,
+            found: false
+        });
     }
+    // ***************************************************************
 
-    let finalResults = [];
-    let message = '';
-    let found = false;
-
-    if (foundResults.length > 0) {
-        // ✅ ถ้ามีหลายอัน → สุ่มมาแค่ 1
-        const randomIndex = Math.floor(Math.random() * foundResults.length);
-        finalResults = [foundResults[randomIndex]];
-        message = `พบเมนูที่ตรงกับชื่อ: ${name}`;
-        found = true;
-    } else {
-        // ❌ ไม่พบ → สุ่มจากทั้งหมด
-        const randomIndex = Math.floor(Math.random() * userData.length);
-        finalResults = [userData[randomIndex]];
-        message = `ไม่พบเมนูสำหรับชื่อ "${name}" จึงแสดงเมนูแนะนำ (สุ่ม)`;
-        found = false;
-    }
-
-    const output = (finalResults || []).map(({ keyword, ...rest }) => rest);
-
-    res.json({ 
-        found: found,
-        message: message,
-        data: output
+    // ถ้าพบแบบตรงชื่อ
+    return res.json({
+        message: `เครื่องดื่มที่เหมาะกับคุณ "${name}" คือ ${foundMatches.length} รายการนี้`,
+        data: foundMatches,
+        found: true
     });
 });
 
-// ✅ Start Server
+
+// ***************************************************************
+// *** 5. เริ่มต้น Server ***
+// ***************************************************************
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });

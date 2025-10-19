@@ -5,6 +5,18 @@
 // *****************************************************************
 const BACKEND_URL = 'https://ur-cocktail.onrender.com';
 
+// *****************************************************************
+// *** 1. User ID Setup (สร้าง/ดึง User ID ชั่วคราวจาก Local Storage) ***
+// *****************************************************************
+let USER_ID = localStorage.getItem('cocktailUserId');
+if (!USER_ID) {
+    // สร้าง ID ง่ายๆ เพื่อใช้เป็นชื่อไฟล์ชั่วคราว
+    USER_ID = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('cocktailUserId', USER_ID);
+}
+console.log(`Current User ID: ${USER_ID}`);
+
+
 // ฟังก์ชันสำหรับแปลง Level ให้เป็นข้อความ
 const mapLevel = (level) => {
     const levelMap = {
@@ -14,7 +26,6 @@ const mapLevel = (level) => {
         '3': 'Strong (เข้มข้น)',
         '4': 'Hard Core (หนักมาก)'
     };
-    // แปลงให้เป็น String ก่อนค้นหา เพื่อรองรับข้อมูลที่อาจเป็นตัวเลข
     return levelMap[String(level)] || 'ไม่ระบุ'; 
 };
 
@@ -22,7 +33,6 @@ const mapLevel = (level) => {
 const getColorIconHtml = (colorName) => {
     const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
     
-    // ตรวจสอบชื่อสีทั้งภาษาไทยและอังกฤษ
     if (safeColorName.includes('แดง') || safeColorName.includes('red')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
     if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน') || safeColorName.includes('blue')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
     if (safeColorName.includes('เขียว') || safeColorName.includes('green')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
@@ -36,7 +46,6 @@ const getColorIconHtml = (colorName) => {
     if (safeColorName.includes('น้ำตาล') || safeColorName.includes('brown')) return `<span class="color-icon color-brown" title="สีน้ำตาล"></span>`;
     if (safeColorName.includes('เทา') || safeColorName.includes('gray')) return `<span class="color-icon color-gray" title="สีเทา"></span>`;
     
-    // คืนค่าว่างเปล่าถ้าไม่ตรงกับสีที่กำหนด
     return ''; 
 };
 
@@ -47,13 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const cocktailDetailsDiv = document.getElementById('cocktailDetails');
 
     if (!cocktailNameInput || !searchButton || !messageDisplay || !cocktailDetailsDiv) {
-        console.error("Missing required HTML elements.");
-        // ตั้งค่าข้อความแจ้งเตือนเมื่อหา Element ไม่เจอ
         if (messageDisplay) messageDisplay.textContent = '❌ Error: ไม่พบส่วนประกอบ HTML (Input/Button/Display)';
         return;
     }
     
-    // ผูก Event Listener
     searchButton.addEventListener('click', searchCocktail);
     cocktailNameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -77,12 +83,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name, userId: USER_ID }),
             });
 
-            // ตรวจสอบสถานะการเชื่อมต่อ
             if (!response.ok) {
-                // ถ้าสถานะไม่ใช่ 2xx ให้ดึงข้อความ Error จาก Server มาแสดง
                 const errorData = await response.json();
                 messageDisplay.textContent = `Error (${response.status}): ${errorData.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์'}`;
                 return;
@@ -93,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let html = ''; 
 
             if (data.data && data.data.length > 0) {
-                // ถ้าเจอข้อมูล: ใช้ข้อความจาก Server
                 messageDisplay.textContent = data.message;
                 
                 data.data.forEach(item => {
@@ -101,10 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const levelText = mapLevel(item.level); 
                     const colorHtml = getColorIconHtml(item.color);
                     
-                    // เตรียมส่วนผสมให้พร้อมแสดงผล: ถ้าเป็น Array ให้ Join ด้วยคอมม่า
-                    const ingredientsContent = Array.isArray(item.ingredients) 
-                        ? item.ingredients.join(', ') 
-                        : (item.ingredients || 'N/A');
+                    // ***************************************************************
+                    // *** ตัดโค้ดแสดงผล Field ที่ไม่ต้องการออกไป (glass, ingredients, tags, instructions) ***
+                    // ***************************************************************
 
                     // แสดงผลลัพธ์
                     html += `
@@ -117,25 +119,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p><strong>สี:</strong> ${colorHtml} ${item.color || 'N/A'}</p> 
                             
                             <p><strong>Level:</strong> ${levelText}</p>
-                            
-                            ${item['base on'] ? `<p><strong>Base on:</strong> ${item['base on']}</p>` : ''}
-                            
-                            ${(ingredientsContent && ingredientsContent !== 'N/A') ? `
-                                <p>
-                                    <strong>ส่วนผสม:</strong>
-                                    ${ingredientsContent}
-                                </p>` : ''}
 
-                            ${(item.instructions && item.instructions !== 'N/A') ? `
-                                <p>
-                                    <strong>คำแนะนำ:</strong>
-                                    ${item.instructions}
-                                </p>` : ''}
-
+                            ${(item['base on'] && item['base on'] !== 'N/A') ? `<p><strong>Base on:</strong> ${item['base on']}</p>` : ''}
+                            
                         </div>`;
                 });
             } else {
-                // ถ้าไม่พบข้อมูล: ใช้ข้อความที่แก้ไขใหม่
                 messageDisplay.textContent = `ไม่พบเมนูสำหรับชื่อ "${name}"`;
                 html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
             }
