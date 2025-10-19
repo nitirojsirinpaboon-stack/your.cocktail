@@ -17,12 +17,14 @@ const PORT = process.env.PORT || 10000;
 app.use(cors()); 
 app.use(express.json()); 
 
-// ตำแหน่งเก็บข้อมูลประวัติผู้ใช้ (user_history)
+const ALL_LEVELS = new Set(['0', '1', '2', '3', '4']); // Level ที่ต้องการให้ครบถ้วน
 const USER_HISTORY_DIR = path.join(__dirname, 'user_history'); 
 
 // โหลดข้อมูล JSON หลักจากไฟล์ (user.json)
 const dataPath = path.join(__dirname, 'data', 'user.json'); 
 let cocktailData = []; 
+
+// ... (ส่วน Try/Catch โหลด cocktailData และสร้าง USER_HISTORY_DIR ยังคงเหมือนเดิม) ...
 
 try {
     const data = fs.readFileSync(dataPath, 'utf8');
@@ -51,7 +53,6 @@ const getUserHistory = (userId) => {
         const data = fs.readFileSync(userFilePath, 'utf8');
         return JSON.parse(data); 
     } catch (error) {
-        // หากไฟล์ไม่มีอยู่ หรือเกิด Error ในการอ่าน/Parse
         return { recommendedLevels: [] }; // คืนค่าเริ่มต้น
     }
 };
@@ -68,7 +69,7 @@ const saveUserHistory = (userId, history) => {
 
 
 // ***************************************************************
-// *** 4. Route หลักสำหรับการค้นหา ***
+// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V2.0) ***
 // ***************************************************************
 
 app.post('/search', (req, res) => {
@@ -79,7 +80,6 @@ app.post('/search', (req, res) => {
         });
     }
     
-    // ดึง name และ userId
     const { name, userId } = req.body;
     
     if (!name || !userId) {
@@ -97,60 +97,64 @@ app.post('/search', (req, res) => {
     );
 
     // ***************************************************************
-    // *** Smart Random Recommendation Logic ***
+    // *** Logic: จัดการการสุ่ม 1 รายการ เมื่อค้นหาไม่เจอ ***
     // ***************************************************************
     if (foundMatches.length === 0) {
         
         const userHistory = getUserHistory(userId);
-        // Level ที่เคยแนะนำให้ผู้ใช้คนนี้ไปแล้ว
         const recommendedLevels = new Set(userHistory.recommendedLevels.map(String)); 
-        let randomResults = [];
-        let availablePool = [...cocktailData]; // Pool สำหรับสุ่ม
-        const maxRandom = 3; 
+        let finalRecommendation = null;
         
-        // 1. กรองเมนูที่มี Level ที่ไม่เคยแนะนำให้ผู้ใช้คนนี้ (Level ที่ยังไม่ได้ลอง)
-        const unseenCocktails = availablePool.filter(item => !recommendedLevels.has(String(item.level)));
+        // 1. หา Level ที่ผู้ใช้ยังไม่เคยลอง (Unseen Levels)
+        const unseenLevels = [...ALL_LEVELS].filter(level => !recommendedLevels.has(level));
         
-        // 2. ถ้ามีเมนูที่ Level ไม่เคยแนะนำ ให้สุ่มจากกลุ่มนั้นก่อน (เน้นความหลากหลาย)
-        if (unseenCocktails.length > 0) {
-            let tempUnseen = [...unseenCocktails];
-            let levelsFoundInSession = new Set(); // ป้องกันการสุ่ม Level ซ้ำใน 3 รายการนี้
+        // 2. ถ้ายังมี Level ที่ยังไม่เคยลอง (ยังไม่ครบ 0-4)
+        if (unseenLevels.length > 0) {
             
-            while (randomResults.length < maxRandom && tempUnseen.length > 0) {
-                const randomIndex = Math.floor(Math.random() * tempUnseen.length);
-                const randomItem = tempUnseen[randomIndex];
-                const itemLevel = String(randomItem.level);
-
-                // ถ้า Level นี้ยังไม่เคยถูกแนะนำใน 3 รายการนี้ และยังไม่ได้อยู่ในประวัติ (เงื่อนไขที่ 1)
-                if (!levelsFoundInSession.has(itemLevel)) {
-                    randomResults.push(randomItem);
-                    levelsFoundInSession.add(itemLevel);
-                    // บันทึก Level นี้ลงในประวัติผู้ใช้ (เพื่อใช้ในการค้นหาครั้งถัดไป)
-                    userHistory.recommendedLevels.push(itemLevel); 
-                }
-                tempUnseen.splice(randomIndex, 1); // ลบออกจาก pool ชั่วคราว
-            }
-        }
-
-        // 3. ถ้ายังได้ไม่ครบ 3 (เพราะ Level ไม่ครบลูปแล้ว) ให้สุ่มรายการที่เหลือเข้ามาเติม
-        if (randomResults.length < maxRandom) {
-            // กรองรายการที่ยังไม่ถูกเลือกเข้ามาใน randomResults
-            const remainingPool = availablePool.filter(item => !randomResults.includes(item));
-            let tempRemaining = [...remainingPool];
+            // กรองเมนูทั้งหมดที่อยู่ใน Level ที่ยังไม่เคยลอง
+            const candidates = cocktailData.filter(item => unseenLevels.includes(String(item.level)));
             
-            while (randomResults.length < maxRandom && tempRemaining.length > 0) {
-                const randomIndex = Math.floor(Math.random() * tempRemaining.length);
-                randomResults.push(tempRemaining[randomIndex]);
-                tempRemaining.splice(randomIndex, 1);
+            if (candidates.length > 0) {
+                // สุ่มเมนูจากกลุ่ม Level ที่ยังไม่เคยลอง
+                const randomIndex = Math.floor(Math.random() * candidates.length);
+                finalRecommendation = candidates[randomIndex];
+                
+                // บันทึก Level ที่ถูกแนะนำลงในประวัติผู้ใช้
+                const recommendedLevel = String(finalRecommendation.level);
+                userHistory.recommendedLevels.push(recommendedLevel);
+                saveUserHistory(userId, userHistory);
+                
+                // คำนวณ Level ที่เหลือ
+                const remaining = unseenLevels.length - 1;
+                const message = remaining > 0 
+                    ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ (Level ใหม่) ${finalRecommendation.name} สิ! (เหลืออีก ${remaining} Level)`
+                    : `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} สิท่าจะดี`;
+
+                return res.json({
+                    message: message,
+                    data: [finalRecommendation], // ส่งกลับเพียง 1 รายการ
+                    found: false
+                });
             }
         }
         
-        // 4. บันทึกประวัติผู้ใช้ลงในไฟล์
-        saveUserHistory(userId, userHistory);
+        // 3. ถ้า Level ครบทุก Level แล้ว (หรือหาเมนูใน Level ที่เหลือไม่เจอ)
+        //    สุ่มเมนู 1 รายการจากเมนูทั้งหมด
+        if (!finalRecommendation && cocktailData.length > 0) {
+            const randomIndex = Math.floor(Math.random() * cocktailData.length);
+            finalRecommendation = cocktailData[randomIndex];
 
+            return res.json({
+                message: `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} ที่สุ่มมาสิท่าจะดี`,
+                data: [finalRecommendation], // ส่งกลับเพียง 1 รายการ
+                found: false
+            });
+        }
+        
+        // กรณีสุดท้าย: ข้อมูลว่างเปล่า
         return res.json({
-            message: `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ ${randomResults.length} รายการที่เหมาะกับคุณสิ!`,
-            data: randomResults,
+            message: `ไม่พบเมนูที่ตรงกับ "${name}" และไม่มีข้อมูลค็อกเทลในระบบ`,
+            data: [], 
             found: false
         });
     }
