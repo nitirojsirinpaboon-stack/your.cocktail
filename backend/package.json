@@ -1,12 +1,23 @@
 {
-  "name": "cocktail-generator-backend",
+  "name": "your-cocktail-backend",
   "version": "1.0.0",
+  "description": "Backend service for cocktail recommendation app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "keywords": [
+    "node",
+    "express",
+    "redis"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7",
+    "redis": "^4.6.14" 
   }
 }

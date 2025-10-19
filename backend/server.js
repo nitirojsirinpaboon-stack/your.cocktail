@@ -6,31 +6,52 @@
 const express = require('express');
 const cors = require('cors'); 
 const path = require('path');
-const fs = require('fs');
+// ไม่ใช้ fs ในการจัดการประวัติแล้ว แต่ยังคงไว้สำหรับโหลด user.json
+const fs = require('fs'); 
+// ติดตั้ง 'redis' package สำหรับ External Cache
+const redis = require('redis');
 
 const app = express();
 const PORT = process.env.PORT || 10000; 
 
 // ***************************************************************
-// *** 2. การตั้งค่า User History และการโหลดข้อมูลหลัก ***
+// *** 2. การตั้งค่า Redis Client (External Cache) ***
+// ***************************************************************
+let redisClient;
+const REDIS_URL = process.env.REDIS_URL;
+
+if (REDIS_URL) {
+    // เชื่อมต่อ Redis โดยใช้ Environment Variable REDIS_URL
+    redisClient = redis.createClient({
+        url: REDIS_URL
+    });
+
+    redisClient.connect()
+        .then(() => console.log('✅ Connected to Redis Cache.'))
+        .catch(err => {
+            console.error('❌ Failed to connect to Redis:', err.message);
+            redisClient = null; // ปิดการใช้งาน Redis หากเชื่อมต่อไม่ได้
+        });
+} else {
+    console.warn('⚠️ REDIS_URL not set. History persistence will fail upon server restart.');
+}
+
+// ***************************************************************
+// *** 3. การโหลดข้อมูลหลัก ***
 // ***************************************************************
 app.use(cors()); 
 app.use(express.json()); 
 
 const ALL_LEVELS = new Set(['0', '1', '2', '3', '4']); 
-const USER_HISTORY_DIR = path.join(__dirname, 'user_history'); 
 
-// โหลดข้อมูล JSON หลักจากไฟล์ (user.json)
 const dataPath = path.join(__dirname, 'data', 'user.json'); 
 let cocktailData = []; 
-// สร้าง Map สำหรับค้นหาเมนูจาก ID อย่างรวดเร็ว
 let cocktailMap = new Map();
 
 try {
     const data = fs.readFileSync(dataPath, 'utf8');
     cocktailData = JSON.parse(data);
     
-    // สร้าง Map สำหรับค้นหาเมนูจาก ID
     cocktailData.forEach(item => {
         if (item.id) {
             cocktailMap.set(String(item.id), item);
@@ -39,11 +60,6 @@ try {
 
     console.log(`✅ Loaded ${cocktailData.length} records from JSON (data/user.json).`);
 
-    // สร้างโฟลเดอร์เก็บประวัติผู้ใช้หากยังไม่มี (อาจถูกลบเมื่อ Render รีสตาร์ท)
-    if (!fs.existsSync(USER_HISTORY_DIR)) {
-        fs.mkdirSync(USER_HISTORY_DIR);
-        console.log(`💡 Created directory: ${USER_HISTORY_DIR}`);
-    }
 } catch (error) {
     console.error('❌ Error loading critical data:', error);
     console.error(`*** CRITICAL: Could not find data file at: ${dataPath} ***`); 
@@ -51,38 +67,50 @@ try {
 
 
 // ***************************************************************
-// *** 3. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
+// *** 4. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save - ใช้ Redis) ***
 // ***************************************************************
 
-const getUserHistory = (userId) => {
-    const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
+// โหลดประวัติผู้ใช้จาก Redis
+const getUserHistory = async (userId) => {
+    if (!redisClient) return { receivedIds: [] };
+
+    const key = `history:${userId}`;
     try {
-        const data = fs.readFileSync(userFilePath, 'utf8');
-        const history = JSON.parse(data);
-        // เก็บเฉพาะ ID เมนูที่ได้รับแล้วเท่านั้น
-        return { receivedIds: history.receivedIds || [] };
+        const data = await redisClient.get(key);
+        if (data) {
+            const history = JSON.parse(data);
+            return { receivedIds: history.receivedIds || [] };
+        }
     } catch (error) {
-        return { receivedIds: [] };
+        console.error(`❌ Redis Get Error for ${userId}:`, error.message);
     }
+    // คืนค่าเริ่มต้นหากหาไม่เจอหรือเกิดข้อผิดพลาด
+    return { receivedIds: [] };
 };
 
-const saveUserHistory = (userId, history) => {
-    const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
+// บันทึกประวัติผู้ใช้ลง Redis
+const saveUserHistory = async (userId, history) => {
+    if (!redisClient) return;
+
+    const key = `history:${userId}`;
     try {
-        // บันทึกเฉพาะ ID เมนู โดยทำให้ค่าไม่ซ้ำกันก่อน
+        // ทำให้ค่า ID เมนูไม่ซ้ำกันก่อนบันทึก
         history.receivedIds = [...new Set(history.receivedIds.map(String))];
-        fs.writeFileSync(userFilePath, JSON.stringify(history, null, 2), 'utf8');
+        const jsonString = JSON.stringify(history);
+        
+        // บันทึกข้อมูลลง Redis
+        await redisClient.set(key, jsonString);
     } catch (error) {
-        console.error(`❌ WARNING: Failed to save history for user ${userId}.`, error.message);
+        console.error(`❌ Redis Set Error for ${userId}:`, error.message);
     }
 };
 
 
 // ***************************************************************
-// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V5.1) ***
+// *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V6.0) ***
 // ***************************************************************
 
-app.post('/search', (req, res) => {
+app.post('/search', async (req, res) => { // เปลี่ยนเป็น async function
     if (cocktailData.length === 0) {
         return res.status(503).json({ 
             message: 'Server Error: ไม่สามารถโหลดข้อมูลค็อกเทลได้',
@@ -109,7 +137,7 @@ app.post('/search', (req, res) => {
     // ***************************************************************
     if (foundMatches.length === 0) {
         
-        const userHistory = getUserHistory(userId);
+        const userHistory = await getUserHistory(userId); // ต้อง await
         const receivedIds = new Set(userHistory.receivedIds.map(String));
         let finalRecommendation = null;
         
@@ -137,9 +165,9 @@ app.post('/search', (req, res) => {
             const randomIndex = Math.floor(Math.random() * candidates.length);
             finalRecommendation = candidates[randomIndex];
             
-            // 2.3 บันทึก ID เมนูนี้ลงในประวัติผู้ใช้
+            // 2.3 บันทึก ID เมนูนี้ลงในประวัติผู้ใช้ (ใช้ await)
             userHistory.receivedIds.push(String(finalRecommendation.id));
-            saveUserHistory(userId, userHistory);
+            await saveUserHistory(userId, userHistory); 
             
             const message = remainingLevels.length > 1 
                 ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ ${finalRecommendation.name} (ยังมีเมนูใหม่เหลืออีก ${remainingLevels.length - 1} Level)`
@@ -154,7 +182,6 @@ app.post('/search', (req, res) => {
         
         // ***************************************************************
         // *** 3. โหมด: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
-        // *** (รันเมื่อ unseenCocktails.length เป็น 0) ***
         // ***************************************************************
         
         // 3.1 ดึงเมนูที่เคยได้รับทั้งหมดจาก ID ที่บันทึกไว้ในประวัติ
@@ -193,7 +220,7 @@ app.post('/search', (req, res) => {
 
 
 // ***************************************************************
-// *** 5. เริ่มต้น Server ***
+// *** 6. เริ่มต้น Server ***
 // ***************************************************************
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
