@@ -30,7 +30,7 @@ try {
     const data = fs.readFileSync(dataPath, 'utf8');
     cocktailData = JSON.parse(data);
     
-    // สร้าง Map
+    // สร้าง Map สำหรับค้นหาเมนูจาก ID
     cocktailData.forEach(item => {
         if (item.id) {
             cocktailMap.set(String(item.id), item);
@@ -39,6 +39,7 @@ try {
 
     console.log(`✅ Loaded ${cocktailData.length} records from JSON (data/user.json).`);
 
+    // สร้างโฟลเดอร์เก็บประวัติผู้ใช้หากยังไม่มี (อาจถูกลบเมื่อ Render รีสตาร์ท)
     if (!fs.existsSync(USER_HISTORY_DIR)) {
         fs.mkdirSync(USER_HISTORY_DIR);
         console.log(`💡 Created directory: ${USER_HISTORY_DIR}`);
@@ -47,6 +48,7 @@ try {
     console.error('❌ Error loading critical data:', error);
     console.error(`*** CRITICAL: Could not find data file at: ${dataPath} ***`); 
 }
+
 
 // ***************************************************************
 // *** 3. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
@@ -57,6 +59,7 @@ const getUserHistory = (userId) => {
     try {
         const data = fs.readFileSync(userFilePath, 'utf8');
         const history = JSON.parse(data);
+        // เก็บเฉพาะ ID เมนูที่ได้รับแล้วเท่านั้น
         return { receivedIds: history.receivedIds || [] };
     } catch (error) {
         return { receivedIds: [] };
@@ -66,6 +69,7 @@ const getUserHistory = (userId) => {
 const saveUserHistory = (userId, history) => {
     const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
     try {
+        // บันทึกเฉพาะ ID เมนู โดยทำให้ค่าไม่ซ้ำกันก่อน
         history.receivedIds = [...new Set(history.receivedIds.map(String))];
         fs.writeFileSync(userFilePath, JSON.stringify(history, null, 2), 'utf8');
     } catch (error) {
@@ -75,7 +79,7 @@ const saveUserHistory = (userId, history) => {
 
 
 // ***************************************************************
-// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V5.0) ***
+// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V5.1) ***
 // ***************************************************************
 
 app.post('/search', (req, res) => {
@@ -114,7 +118,9 @@ app.post('/search', (req, res) => {
             !receivedIds.has(String(item.id))
         );
         
-        // 2. หากยังมีเมนูที่ยังไม่เคยได้รับ (เข้าสู่โหมดสุ่ม Level ใหม่ก่อน)
+        // ***************************************************************
+        // *** 2. หากยังมีเมนูที่ยังไม่เคยได้รับ (เข้าสู่โหมดสุ่ม Level ใหม่ก่อน) ***
+        // ***************************************************************
         if (unseenCocktails.length > 0) {
             
             // หา Level ที่มีเมนูเหลืออยู่ใน unseenCocktails
@@ -135,7 +141,6 @@ app.post('/search', (req, res) => {
             userHistory.receivedIds.push(String(finalRecommendation.id));
             saveUserHistory(userId, userHistory);
             
-            // คำนวณ Level ที่เหลือ (จำนวน Level ที่ยังมีเมนูใหม่เหลืออยู่)
             const message = remainingLevels.length > 1 
                 ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ ${finalRecommendation.name} (ยังมีเมนูใหม่เหลืออีก ${remainingLevels.length - 1} Level)`
                 : `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} สิท่าจะดี`;
@@ -149,12 +154,13 @@ app.post('/search', (req, res) => {
         
         // ***************************************************************
         // *** 3. โหมด: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
+        // *** (รันเมื่อ unseenCocktails.length เป็น 0) ***
         // ***************************************************************
         
         // 3.1 ดึงเมนูที่เคยได้รับทั้งหมดจาก ID ที่บันทึกไว้ในประวัติ
         const previouslyReceivedCocktails = userHistory.receivedIds
             .map(id => cocktailMap.get(id))
-            .filter(item => item !== undefined); // กรองเฉพาะเมนูที่หาเจอ
+            .filter(item => item !== undefined); 
 
         if (previouslyReceivedCocktails.length > 0) {
             // สุ่ม 1 เมนูจาก Pool เมนูที่เคยได้รับไปแล้วเท่านั้น
@@ -162,13 +168,13 @@ app.post('/search', (req, res) => {
             finalRecommendation = previouslyReceivedCocktails[randomIndex];
             
             return res.json({
-                message: `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} ที่สุ่มซ้ำจากประวัติของคุณสิท่าจะดี`,
+                message: `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} ที่สุ่มซ้ำจากประวัติของคุณสิท่าจะดี`, 
                 data: [finalRecommendation], 
                 found: false
             });
         }
         
-        // กรณีสุดท้าย: ข้อมูลว่างเปล่า (ไม่ว่าจะเป็นเพราะ cocktailData ว่าง หรือ receivedIds ว่าง)
+        // กรณีสุดท้าย: ข้อมูลว่างเปล่า
         return res.json({
             message: `ไม่พบเมนูที่ตรงกับ "${name}" และไม่มีข้อมูลค็อกเทลในระบบ`,
             data: [], 
