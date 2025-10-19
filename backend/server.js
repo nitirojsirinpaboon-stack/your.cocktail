@@ -17,19 +17,28 @@ const PORT = process.env.PORT || 10000;
 app.use(cors()); 
 app.use(express.json()); 
 
-const ALL_LEVELS = new Set(['0', '1', '2', '3', '4']); // Level ที่ต้องการให้ครบถ้วน
+const ALL_LEVELS = new Set(['0', '1', '2', '3', '4']); 
 const USER_HISTORY_DIR = path.join(__dirname, 'user_history'); 
 
 // โหลดข้อมูล JSON หลักจากไฟล์ (user.json)
 const dataPath = path.join(__dirname, 'data', 'user.json'); 
 let cocktailData = []; 
+// สร้าง Map สำหรับค้นหาเมนูจาก ID อย่างรวดเร็ว
+let cocktailMap = new Map();
 
 try {
     const data = fs.readFileSync(dataPath, 'utf8');
     cocktailData = JSON.parse(data);
+    
+    // สร้าง Map
+    cocktailData.forEach(item => {
+        if (item.id) {
+            cocktailMap.set(String(item.id), item);
+        }
+    });
+
     console.log(`✅ Loaded ${cocktailData.length} records from JSON (data/user.json).`);
 
-    // สร้างโฟลเดอร์เก็บประวัติผู้ใช้หากยังไม่มี
     if (!fs.existsSync(USER_HISTORY_DIR)) {
         fs.mkdirSync(USER_HISTORY_DIR);
         console.log(`💡 Created directory: ${USER_HISTORY_DIR}`);
@@ -39,34 +48,24 @@ try {
     console.error(`*** CRITICAL: Could not find data file at: ${dataPath} ***`); 
 }
 
-
 // ***************************************************************
 // *** 3. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
 // ***************************************************************
 
-// โหลดประวัติผู้ใช้
 const getUserHistory = (userId) => {
     const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
     try {
         const data = fs.readFileSync(userFilePath, 'utf8');
-        // โครงสร้างใหม่: { triedLevels: [...], receivedIds: [...] }
         const history = JSON.parse(data);
-        return {
-            triedLevels: history.triedLevels || [],
-            receivedIds: history.receivedIds || []
-        };
+        return { receivedIds: history.receivedIds || [] };
     } catch (error) {
-        // คืนค่าเริ่มต้น
-        return { triedLevels: [], receivedIds: [] };
+        return { receivedIds: [] };
     }
 };
 
-// บันทึกประวัติผู้ใช้
 const saveUserHistory = (userId, history) => {
     const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
     try {
-        // ทำให้ค่า Level และ ID ไม่ซ้ำกันก่อนบันทึก
-        history.triedLevels = [...new Set(history.triedLevels.map(String))]; 
         history.receivedIds = [...new Set(history.receivedIds.map(String))];
         fs.writeFileSync(userFilePath, JSON.stringify(history, null, 2), 'utf8');
     } catch (error) {
@@ -76,7 +75,7 @@ const saveUserHistory = (userId, history) => {
 
 
 // ***************************************************************
-// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V3.0) ***
+// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V5.0) ***
 // ***************************************************************
 
 app.post('/search', (req, res) => {
@@ -97,8 +96,6 @@ app.post('/search', (req, res) => {
     }
 
     const searchName = name.toLowerCase().trim();
-    
-    // ค้นหาแบบตรงชื่อ
     let foundMatches = cocktailData.filter(item => 
         item.name && item.name.toLowerCase().includes(searchName)
     );
@@ -109,81 +106,69 @@ app.post('/search', (req, res) => {
     if (foundMatches.length === 0) {
         
         const userHistory = getUserHistory(userId);
-        const triedLevels = new Set(userHistory.triedLevels.map(String)); 
         const receivedIds = new Set(userHistory.receivedIds.map(String));
         let finalRecommendation = null;
         
-        // 1. หา Level ที่ผู้ใช้ยังไม่เคยลอง (Unseen Levels)
-        const unseenLevels = [...ALL_LEVELS].filter(level => !triedLevels.has(level));
+        // 1. หา Pool เมนูทั้งหมดที่ผู้ใช้ยังไม่เคยได้รับ (ไม่ซ้ำชื่อ)
+        let unseenCocktails = cocktailData.filter(item => 
+            !receivedIds.has(String(item.id))
+        );
         
-        // 2. ถ้ายังมี Level ที่ยังไม่เคยลอง (ยังไม่ครบ 0-4)
-        if (unseenLevels.length > 0) {
+        // 2. หากยังมีเมนูที่ยังไม่เคยได้รับ (เข้าสู่โหมดสุ่ม Level ใหม่ก่อน)
+        if (unseenCocktails.length > 0) {
             
-            // สุ่ม Level ใหม่ที่จะแนะนำ (จาก Level ที่ยังไม่เคยลอง)
-            const targetLevelIndex = Math.floor(Math.random() * unseenLevels.length);
-            const targetLevel = unseenLevels[targetLevelIndex];
+            // หา Level ที่มีเมนูเหลืออยู่ใน unseenCocktails
+            let remainingLevels = [...new Set(unseenCocktails.map(item => String(item.level)))];
+            
+            // 2.1 สุ่มเลือก Level เป้าหมายจาก Level ที่เหลืออยู่
+            const targetLevelIndex = Math.floor(Math.random() * remainingLevels.length);
+            const targetLevel = remainingLevels[targetLevelIndex];
 
-            // กรองเมนูทั้งหมดที่อยู่ใน Target Level นั้นเท่านั้น
-            // *** ไม่ต้องตัด receivedIds ออกในขั้นตอนนี้ เพื่อให้มั่นใจว่าได้ Level ใหม่ ***
-            const candidates = cocktailData.filter(item => String(item.level) === targetLevel);
+            // 2.2 กรองเมนูเฉพาะใน Target Level นั้น ที่ยังไม่เคยได้รับ
+            const candidates = unseenCocktails.filter(item => String(item.level) === targetLevel);
             
-            if (candidates.length > 0) {
-                // สุ่มเมนูจาก Target Level ที่ถูกเลือก
-                const randomIndex = Math.floor(Math.random() * candidates.length);
-                finalRecommendation = candidates[randomIndex];
-                
-                // บันทึก Level ที่ถูกแนะนำ และ ID เมนูลงในประวัติผู้ใช้
-                userHistory.triedLevels.push(String(finalRecommendation.level));
-                userHistory.receivedIds.push(String(finalRecommendation.id)); // บันทึก ID
-                saveUserHistory(userId, userHistory);
-                
-                const remaining = unseenLevels.length - 1; 
-                const message = remaining > 0 
-                    ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ (Level ใหม่) ${finalRecommendation.name} สิท่าจะดี! (เหลืออีก ${remaining} Level)`
-                    : `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} สิท่าจะดี`;
-
-                return res.json({
-                    message: message,
-                    data: [finalRecommendation], 
-                    found: false
-                });
-            }
-        }
-        
-        // 3. ถ้า Level ครบทุก Level แล้ว (เข้าสู่โหมดสุ่มเมนูที่ไม่ซ้ำ)
-        if (!finalRecommendation && cocktailData.length > 0) {
+            // สุ่ม 1 เมนูจากกลุ่มเมนู Level เป้าหมายนี้
+            const randomIndex = Math.floor(Math.random() * candidates.length);
+            finalRecommendation = candidates[randomIndex];
             
-            // กรอง Pool เมนูทั้งหมด ตัดเฉพาะเมนูที่ผู้ใช้เคยได้รับไปแล้ว
-            const allUnseenCocktails = cocktailData.filter(item => 
-                !receivedIds.has(String(item.id))
-            );
+            // 2.3 บันทึก ID เมนูนี้ลงในประวัติผู้ใช้
+            userHistory.receivedIds.push(String(finalRecommendation.id));
+            saveUserHistory(userId, userHistory);
             
-            let poolToDrawFrom = allUnseenCocktails;
-            let messageSuffix = " (เมนูใหม่ที่ไม่ซ้ำ)";
-            
-            // ถ้าได้รับครบทุกเมนูแล้ว ให้วนกลับมาสุ่มจากทั้งหมด (พร้อมแจ้งเตือน)
-            if (poolToDrawFrom.length === 0) {
-                poolToDrawFrom = cocktailData;
-                messageSuffix = " (เมนูทั้งหมดในระบบ ได้รับครบแล้ว)";
-            }
-            
-            const randomIndex = Math.floor(Math.random() * poolToDrawFrom.length);
-            finalRecommendation = poolToDrawFrom[randomIndex];
-            
-            // บันทึก ID ของเมนูนี้ลงในประวัติ (หากยังไม่เคยได้รับ)
-            if (!receivedIds.has(String(finalRecommendation.id))) {
-                userHistory.receivedIds.push(String(finalRecommendation.id)); 
-                saveUserHistory(userId, userHistory);
-            }
+            // คำนวณ Level ที่เหลือ (จำนวน Level ที่ยังมีเมนูใหม่เหลืออยู่)
+            const message = remainingLevels.length > 1 
+                ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ ${finalRecommendation.name} (ยังมีเมนูใหม่เหลืออีก ${remainingLevels.length - 1} Level)`
+                : `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} สิท่าจะดี`;
 
             return res.json({
-                message: `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} ที่สุ่มมา${messageSuffix}สิท่าจะดี`,
+                message: message,
                 data: [finalRecommendation], 
                 found: false
             });
         }
         
-        // กรณีสุดท้าย: ข้อมูลว่างเปล่า
+        // ***************************************************************
+        // *** 3. โหมด: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
+        // ***************************************************************
+        
+        // 3.1 ดึงเมนูที่เคยได้รับทั้งหมดจาก ID ที่บันทึกไว้ในประวัติ
+        const previouslyReceivedCocktails = userHistory.receivedIds
+            .map(id => cocktailMap.get(id))
+            .filter(item => item !== undefined); // กรองเฉพาะเมนูที่หาเจอ
+
+        if (previouslyReceivedCocktails.length > 0) {
+            // สุ่ม 1 เมนูจาก Pool เมนูที่เคยได้รับไปแล้วเท่านั้น
+            const randomIndex = Math.floor(Math.random() * previouslyReceivedCocktails.length);
+            finalRecommendation = previouslyReceivedCocktails[randomIndex];
+            
+            return res.json({
+                message: `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} ที่สุ่มซ้ำจากประวัติของคุณสิท่าจะดี`,
+                data: [finalRecommendation], 
+                found: false
+            });
+        }
+        
+        // กรณีสุดท้าย: ข้อมูลว่างเปล่า (ไม่ว่าจะเป็นเพราะ cocktailData ว่าง หรือ receivedIds ว่าง)
         return res.json({
             message: `ไม่พบเมนูที่ตรงกับ "${name}" และไม่มีข้อมูลค็อกเทลในระบบ`,
             data: [], 
