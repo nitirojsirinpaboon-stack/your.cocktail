@@ -1,39 +1,43 @@
-// server.js (Backend: Logic V9.0 - สุ่ม Level ที่เหลือ + บันทึก Level ทันที)
+// server.js (Backend: Logic V10.0 - Stable Connection & Sequential Level)
 
 // ***************************************************************
-// *** 1-3. Modules, Redis Setup, Load Data (ใช้ V8.0/V7.1 เดิม) ***
+// *** 1. Modules ที่จำเป็น ***
 // ***************************************************************
 const express = require('express');
 const cors = require('cors'); 
 const path = require('path');
 const fs = require('fs'); 
-const redis = require('redis');
+const redis = require('redis'); // ต้องมี Redis ใน package.json
 
 const app = express();
-const PORT = process.env.env || 10000; 
+const PORT = process.env.PORT || 10000; 
 
+// ***************************************************************
+// *** 2. การตั้งค่า Redis Client (ใช้ REDIS_URL ตัวเดียว) ***
+// ***************************************************************
 let redisClient;
-const REDIS_HOST = process.env.REDIS_HOST;
-const REDIS_PORT = process.env.REDIS_PORT;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+// V10.0 FIX: ใช้ REDIS_URL ตัวเดียวเพื่อแก้ปัญหาการโหลดตัวแปร
+const REDIS_URL = process.env.REDIS_URL; 
 
-if (REDIS_HOST && REDIS_PASSWORD) {
-    const INTERNAL_REDIS_URL = `redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}`;
-
+if (REDIS_URL) {
     redisClient = redis.createClient({
-        url: INTERNAL_REDIS_URL
+        url: REDIS_URL
     });
 
     redisClient.connect()
-        .then(() => console.log('✅ Connected to Redis Cache (Using Internal Host).'))
+        .then(() => console.log('✅ Connected to Redis Cache (Using REDIS_URL).'))
         .catch(err => {
-            console.error('❌ Failed to connect to Redis (Check Internal Auth/Password):', err.message);
+            console.error('❌ Failed to connect to Redis (Check REDIS_URL/Access Control):', err.message);
             redisClient = null;
         });
 } else {
-    console.warn('⚠️ REDIS Environment variables (HOST, PASSWORD) not set. History persistence will fail.');
+    // V10.0: ข้อความเตือนสำหรับ REDIS_URL เท่านั้น
+    console.warn('⚠️ REDIS_URL Environment variable not set. History persistence will fail.');
 }
 
+// ***************************************************************
+// *** 3. การโหลดข้อมูลหลัก ***
+// ***************************************************************
 app.use(cors()); 
 app.use(express.json()); 
 
@@ -62,8 +66,10 @@ try {
 
 
 // ***************************************************************
-// *** 4. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
+// *** 4. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save - ใช้ Redis) ***
 // ***************************************************************
+
+// โหลดประวัติผู้ใช้จาก Redis
 const getUserHistory = async (userId) => {
     if (!redisClient) return { receivedIds: [], receivedLevels: [] };
 
@@ -83,11 +89,13 @@ const getUserHistory = async (userId) => {
     return { receivedIds: [], receivedLevels: [] };
 };
 
+// บันทึกประวัติผู้ใช้ลง Redis
 const saveUserHistory = async (userId, history) => {
     if (!redisClient) return;
 
     const key = `history:${userId}`;
     try {
+        // V10.0: ทำให้ค่า ID และ Level ไม่ซ้ำกันก่อนบันทึก
         history.receivedIds = [...new Set(history.receivedIds.map(String))];
         history.receivedLevels = [...new Set(history.receivedLevels.map(String))]; 
 
@@ -100,7 +108,7 @@ const saveUserHistory = async (userId, history) => {
 
 
 // ***************************************************************
-// *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V9.0) ***
+// *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V10.0) ***
 // ***************************************************************
 
 app.post('/search', async (req, res) => { 
@@ -132,21 +140,20 @@ app.post('/search', async (req, res) => {
         
         const userHistory = await getUserHistory(userId); 
         const receivedIds = new Set(userHistory.receivedIds.map(String));
-        const receivedLevels = new Set(userHistory.receivedLevels.map(String)); // Level ที่เคยได้รับ
+        const receivedLevels = new Set(userHistory.receivedLevels.map(String));
         
         let finalRecommendation = null;
         
         // ***************************************************************
-        // *** PHASE 1: บังคับสุ่ม Level ที่ยังไม่เคยได้รับ (ถ้ายังไม่ครบ) ***
+        // *** PHASE 1: บังคับ Level ไม่ซ้ำ (Sequential Level 0 -> 1 -> 2...) ***
         // ***************************************************************
 
-        // 1. หา Level ที่ยังไม่เคยถูกสุ่ม (Based on receivedLevels)
+        // 1. หา Level ที่ยังไม่เคยถูกสุ่ม (V10.0: ใช้ ALL_LEVELS เรียงตามลำดับ)
         let unseenLevels = ALL_LEVELS.filter(level => !receivedLevels.has(level));
         
         if (unseenLevels.length > 0) {
             
-            // 2. เลือก Level เป้าหมายคือ Level ที่ต่ำที่สุดที่ยังไม่เคยถูกสุ่ม (บังคับเรียง 0, 1, 2...)
-            // V9.0: บังคับ Level ที่ต่ำที่สุดที่ไม่เคยได้
+            // 2. เลือก Level เป้าหมายคือ Level ที่ต่ำที่สุดที่ยังไม่เคยถูกสุ่ม
             const targetLevel = unseenLevels[0]; 
 
             // 3. กรองหาเมนูใน Target Level ที่ยังไม่เคยได้รับ ID (ชื่อใหม่)
@@ -154,19 +161,19 @@ app.post('/search', async (req, res) => {
                 String(item.level) === targetLevel && !receivedIds.has(String(item.id))
             );
             
-            // 4. ถ้าหาเมนูใหม่ใน Level เป้าหมายได้ (ซึ่งควรจะเจอเสมอ)
             if (candidates.length > 0) {
                 
-                // สุ่ม 1 เมนูจากกลุ่ม Level เป้าหมาย (ชื่อใหม่)
+                // 4. สุ่ม 1 เมนูจากกลุ่ม Level เป้าหมาย (ชื่อใหม่)
                 const randomIndex = Math.floor(Math.random() * candidates.length);
                 finalRecommendation = candidates[randomIndex];
                 
                 // 5. บันทึกประวัติใหม่
                 userHistory.receivedIds.push(String(finalRecommendation.id));
-                // *** V9.0 FIX: บันทึก Level นี้ว่าถูกสุ่มแล้วทันที (เพื่อให้รอบหน้าได้ Level อื่น) ***
+                // V10.0 FIX: บันทึก Level นี้ว่าถูกสุ่มแล้วทันทีเพื่อให้รอบหน้าเปลี่ยน Level
                 userHistory.receivedLevels.push(targetLevel); 
                 await saveUserHistory(userId, userHistory); 
                 
+                // V10.0 FIX: ข้อความมาตรฐานสำหรับการสุ่มสำเร็จ
                 return res.json({
                     message: `เครื่องดื่มที่เหมาะกับคุณ "${name}" คือ 1 รายการนี้`,
                     data: [finalRecommendation], 
@@ -175,19 +182,16 @@ app.post('/search', async (req, res) => {
 
             } else {
                 // Edge Case: Level นั้นควรจะเหลือเมนู แต่กลับไม่เหลือ ID ใหม่เลย (เมนูหมด)
-                // บันทึก Level นี้ว่าถูกสุ่มแล้ว เพื่อให้ข้ามไป Level ถัดไป
+                // บันทึก Level นี้ว่าถูกสุ่มแล้ว และรัน PHASE 2 ทันที
                 userHistory.receivedLevels.push(targetLevel);
                 await saveUserHistory(userId, userHistory); 
                 
-                // สั่งให้สุ่มวนซ้ำเฉพาะเมนูที่เคยได้รับไปแล้ว (เพื่อป้องกันการได้เมนูซ้ำ Level 0)
-                // หาก Level นั้นไม่มีเมนูใหม่เหลืออยู่แล้ว
-                // V9.0: กลับไปที่ Logic Phase 2 (สุ่มวนซ้ำจากประวัติ)
+                // Fall-through ไป Phase 2
             }
         }
         
         // ***************************************************************
         // *** PHASE 2: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
-        // *** (รันเมื่อ unseenLevels.length เป็น 0 หรือ Phase 1 ตก Edge Case) ***
         // ***************************************************************
         
         const previouslyReceivedCocktails = userHistory.receivedIds
@@ -199,6 +203,7 @@ app.post('/search', async (req, res) => {
             const randomIndex = Math.floor(Math.random() * previouslyReceivedCocktails.length);
             finalRecommendation = previouslyReceivedCocktails[randomIndex];
             
+            // V10.0 FIX: ข้อความมาตรฐานสำหรับการสุ่มวนซ้ำสำเร็จ
             return res.json({
                 message: `เครื่องดื่มที่เหมาะกับคุณ "${name}" คือ 1 รายการนี้`, 
                 data: [finalRecommendation], 
@@ -225,7 +230,7 @@ app.post('/search', async (req, res) => {
 
 
 // ***************************************************************
-// *** 6. เริ่มต้น Server *** (ไม่เปลี่ยนแปลง)
+// *** 6. เริ่มต้น Server ***
 // ***************************************************************
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
