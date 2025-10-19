@@ -24,8 +24,6 @@ const USER_HISTORY_DIR = path.join(__dirname, 'user_history');
 const dataPath = path.join(__dirname, 'data', 'user.json'); 
 let cocktailData = []; 
 
-// ... (ส่วน Try/Catch โหลด cocktailData และสร้าง USER_HISTORY_DIR ยังคงเหมือนเดิม) ...
-
 try {
     const data = fs.readFileSync(dataPath, 'utf8');
     cocktailData = JSON.parse(data);
@@ -53,6 +51,7 @@ const getUserHistory = (userId) => {
         const data = fs.readFileSync(userFilePath, 'utf8');
         return JSON.parse(data); 
     } catch (error) {
+        // หากไฟล์ไม่มีอยู่ หรือเกิด Error ในการอ่าน/Parse
         return { recommendedLevels: [] }; // คืนค่าเริ่มต้น
     }
 };
@@ -61,6 +60,8 @@ const getUserHistory = (userId) => {
 const saveUserHistory = (userId, history) => {
     const userFilePath = path.join(USER_HISTORY_DIR, `${userId}.json`);
     try {
+        // บันทึกโดยทำให้ค่าใน recommendedLevels ไม่ซ้ำกันก่อน (เผื่อกรณีมี error)
+        history.recommendedLevels = [...new Set(history.recommendedLevels.map(String))]; 
         fs.writeFileSync(userFilePath, JSON.stringify(history, null, 2), 'utf8');
     } catch (error) {
         console.error(`❌ WARNING: Failed to save history for user ${userId}.`, error.message);
@@ -69,7 +70,7 @@ const saveUserHistory = (userId, history) => {
 
 
 // ***************************************************************
-// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V2.0) ***
+// *** 4. Route หลักสำหรับการค้นหา (Smart Random Logic V2.1) ***
 // ***************************************************************
 
 app.post('/search', (req, res) => {
@@ -102,20 +103,25 @@ app.post('/search', (req, res) => {
     if (foundMatches.length === 0) {
         
         const userHistory = getUserHistory(userId);
+        // ใช้ Set เพื่อจัดการความซ้ำซ้อนของ Level ที่เคยแนะนำอย่างมีประสิทธิภาพ
         const recommendedLevels = new Set(userHistory.recommendedLevels.map(String)); 
         let finalRecommendation = null;
         
         // 1. หา Level ที่ผู้ใช้ยังไม่เคยลอง (Unseen Levels)
         const unseenLevels = [...ALL_LEVELS].filter(level => !recommendedLevels.has(level));
         
-        // 2. ถ้ายังมี Level ที่ยังไม่เคยลอง (ยังไม่ครบ 0-4)
+        // 2. ถ้ายังมี Level ที่ยังไม่เคยลอง (ยังไม่ครบ 0-4) ให้สุ่ม Level ใหม่
         if (unseenLevels.length > 0) {
             
-            // กรองเมนูทั้งหมดที่อยู่ใน Level ที่ยังไม่เคยลอง
-            const candidates = cocktailData.filter(item => unseenLevels.includes(String(item.level)));
+            // สุ่ม Level ใหม่ที่จะแนะนำ (จาก Level ที่ยังไม่เคยลอง)
+            const targetLevelIndex = Math.floor(Math.random() * unseenLevels.length);
+            const targetLevel = unseenLevels[targetLevelIndex];
+
+            // กรองเมนูทั้งหมดที่อยู่ใน Target Level นั้นเท่านั้น
+            const candidates = cocktailData.filter(item => String(item.level) === targetLevel);
             
             if (candidates.length > 0) {
-                // สุ่มเมนูจากกลุ่ม Level ที่ยังไม่เคยลอง
+                // สุ่มเมนูจาก Target Level ที่ถูกเลือก
                 const randomIndex = Math.floor(Math.random() * candidates.length);
                 finalRecommendation = candidates[randomIndex];
                 
@@ -125,9 +131,9 @@ app.post('/search', (req, res) => {
                 saveUserHistory(userId, userHistory);
                 
                 // คำนวณ Level ที่เหลือ
-                const remaining = unseenLevels.length - 1;
+                const remaining = unseenLevels.length - 1; // ลบ Level ที่เพิ่งแนะนำไป
                 const message = remaining > 0 
-                    ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ (Level ใหม่) ${finalRecommendation.name} สิ! (เหลืออีก ${remaining} Level)`
+                    ? `ไม่พบเมนูที่ตรงกับ "${name}" ลองเมนูแนะนำ (Level ใหม่) ${finalRecommendation.name} สิท่าจะดี! (เหลืออีก ${remaining} Level)`
                     : `คุณได้ลองครบทุก Level แล้ว! ลองเมนู ${finalRecommendation.name} สิท่าจะดี`;
 
                 return res.json({
@@ -138,8 +144,7 @@ app.post('/search', (req, res) => {
             }
         }
         
-        // 3. ถ้า Level ครบทุก Level แล้ว (หรือหาเมนูใน Level ที่เหลือไม่เจอ)
-        //    สุ่มเมนู 1 รายการจากเมนูทั้งหมด
+        // 3. ถ้า Level ครบทุก Level แล้ว หรือหาเมนูใน Level ที่เหลือไม่เจอ ให้สุ่มจากทั้งหมด
         if (!finalRecommendation && cocktailData.length > 0) {
             const randomIndex = Math.floor(Math.random() * cocktailData.length);
             finalRecommendation = cocktailData[randomIndex];
