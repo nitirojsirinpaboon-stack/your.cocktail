@@ -1,7 +1,7 @@
-// server.js (Backend: Logic V8.0 - บังคับ Level เปลี่ยนทุกครั้ง)
+// server.js (Backend: Logic V9.0 - สุ่ม Level ที่เหลือ + บันทึก Level ทันที)
 
 // ***************************************************************
-// *** 1. Modules ที่จำเป็น *** (ไม่เปลี่ยนแปลง)
+// *** 1-3. Modules, Redis Setup, Load Data (ใช้ V8.0/V7.1 เดิม) ***
 // ***************************************************************
 const express = require('express');
 const cors = require('cors'); 
@@ -10,11 +10,8 @@ const fs = require('fs');
 const redis = require('redis');
 
 const app = express();
-const PORT = process.env.PORT || 10000; 
+const PORT = process.env.env || 10000; 
 
-// ***************************************************************
-// *** 2. การตั้งค่า Redis Client (ไม่เปลี่ยนแปลง)
-// ***************************************************************
 let redisClient;
 const REDIS_HOST = process.env.REDIS_HOST;
 const REDIS_PORT = process.env.REDIS_PORT;
@@ -37,9 +34,6 @@ if (REDIS_HOST && REDIS_PASSWORD) {
     console.warn('⚠️ REDIS Environment variables (HOST, PASSWORD) not set. History persistence will fail.');
 }
 
-// ***************************************************************
-// *** 3. การโหลดข้อมูลหลัก (ไม่เปลี่ยนแปลง)
-// ***************************************************************
 app.use(cors()); 
 app.use(express.json()); 
 
@@ -68,9 +62,8 @@ try {
 
 
 // ***************************************************************
-// *** 4. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save - ไม่เปลี่ยนแปลง)
+// *** 4. ฟังก์ชันจัดการประวัติผู้ใช้ (Load/Save) ***
 // ***************************************************************
-
 const getUserHistory = async (userId) => {
     if (!redisClient) return { receivedIds: [], receivedLevels: [] };
 
@@ -81,7 +74,7 @@ const getUserHistory = async (userId) => {
             const history = JSON.parse(data);
             return { 
                 receivedIds: history.receivedIds || [],
-                receivedLevels: history.receivedLevels || [] 
+                receivedLevels: history.receivedLevels || [] // เก็บ Level ที่เคยสุ่มไปแล้ว
             };
         }
     } catch (error) {
@@ -107,7 +100,7 @@ const saveUserHistory = async (userId, history) => {
 
 
 // ***************************************************************
-// *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V8.0) ***
+// *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V9.0) ***
 // ***************************************************************
 
 app.post('/search', async (req, res) => { 
@@ -139,37 +132,38 @@ app.post('/search', async (req, res) => {
         
         const userHistory = await getUserHistory(userId); 
         const receivedIds = new Set(userHistory.receivedIds.map(String));
-        const receivedLevels = new Set(userHistory.receivedLevels.map(String));
+        const receivedLevels = new Set(userHistory.receivedLevels.map(String)); // Level ที่เคยได้รับ
         
         let finalRecommendation = null;
         
         // ***************************************************************
         // *** PHASE 1: บังคับสุ่ม Level ที่ยังไม่เคยได้รับ (ถ้ายังไม่ครบ) ***
-        // *** V8.0 FIX: ได้ 1 เมนูถือว่า Level นั้นจบ! ***
         // ***************************************************************
 
+        // 1. หา Level ที่ยังไม่เคยถูกสุ่ม (Based on receivedLevels)
         let unseenLevels = ALL_LEVELS.filter(level => !receivedLevels.has(level));
         
         if (unseenLevels.length > 0) {
             
-            // เลือก Level เป้าหมายคือ Level ที่ต่ำที่สุดที่ยังไม่เคยถูกสุ่ม
+            // 2. เลือก Level เป้าหมายคือ Level ที่ต่ำที่สุดที่ยังไม่เคยถูกสุ่ม (บังคับเรียง 0, 1, 2...)
+            // V9.0: บังคับ Level ที่ต่ำที่สุดที่ไม่เคยได้
             const targetLevel = unseenLevels[0]; 
 
-            // กรองหาเมนูใน Level นี้ ที่ยังไม่เคยถูกสุ่ม ID (ยังไม่เคยได้ชื่อนี้)
-            // (สำคัญ: เรายังคงป้องกันการสุ่มชื่อซ้ำ)
+            // 3. กรองหาเมนูใน Target Level ที่ยังไม่เคยได้รับ ID (ชื่อใหม่)
             let candidates = cocktailData.filter(item => 
                 String(item.level) === targetLevel && !receivedIds.has(String(item.id))
             );
             
+            // 4. ถ้าหาเมนูใหม่ใน Level เป้าหมายได้ (ซึ่งควรจะเจอเสมอ)
             if (candidates.length > 0) {
                 
                 // สุ่ม 1 เมนูจากกลุ่ม Level เป้าหมาย (ชื่อใหม่)
                 const randomIndex = Math.floor(Math.random() * candidates.length);
                 finalRecommendation = candidates[randomIndex];
                 
-                // 1. บันทึก ID เมนูที่เพิ่งได้รับ
+                // 5. บันทึกประวัติใหม่
                 userHistory.receivedIds.push(String(finalRecommendation.id));
-                // 2. *** V8.0 FIX: บันทึก Level นี้ว่าถูกสุ่มแล้วทันที (เพื่อให้รอบหน้าได้ Level อื่น) ***
+                // *** V9.0 FIX: บันทึก Level นี้ว่าถูกสุ่มแล้วทันที (เพื่อให้รอบหน้าได้ Level อื่น) ***
                 userHistory.receivedLevels.push(targetLevel); 
                 await saveUserHistory(userId, userHistory); 
                 
@@ -180,21 +174,20 @@ app.post('/search', async (req, res) => {
                 });
 
             } else {
-                // Edge Case: Level นี้เคยถูกสุ่มมาแล้ว แต่ไม่ได้บันทึก Level
-                // (ไม่น่าเกิดขึ้น ถ้าใช้ V7.1) แต่ถ้าเกิดขึ้น ให้บันทึก Level นี้ทันที
+                // Edge Case: Level นั้นควรจะเหลือเมนู แต่กลับไม่เหลือ ID ใหม่เลย (เมนูหมด)
+                // บันทึก Level นี้ว่าถูกสุ่มแล้ว เพื่อให้ข้ามไป Level ถัดไป
                 userHistory.receivedLevels.push(targetLevel);
                 await saveUserHistory(userId, userHistory); 
                 
-                return res.json({
-                    message: `เครื่องดื่มที่เหมาะกับคุณ "${name}" คือ 0 รายการนี้`,
-                    data: [], 
-                    found: false
-                });
+                // สั่งให้สุ่มวนซ้ำเฉพาะเมนูที่เคยได้รับไปแล้ว (เพื่อป้องกันการได้เมนูซ้ำ Level 0)
+                // หาก Level นั้นไม่มีเมนูใหม่เหลืออยู่แล้ว
+                // V9.0: กลับไปที่ Logic Phase 2 (สุ่มวนซ้ำจากประวัติ)
             }
         }
         
         // ***************************************************************
         // *** PHASE 2: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
+        // *** (รันเมื่อ unseenLevels.length เป็น 0 หรือ Phase 1 ตก Edge Case) ***
         // ***************************************************************
         
         const previouslyReceivedCocktails = userHistory.receivedIds
@@ -202,7 +195,7 @@ app.post('/search', async (req, res) => {
             .filter(item => item !== undefined); 
 
         if (previouslyReceivedCocktails.length > 0) {
-            
+            // สุ่ม 1 เมนูจาก Pool เมนูที่เคยได้รับไปแล้วเท่านั้น
             const randomIndex = Math.floor(Math.random() * previouslyReceivedCocktails.length);
             finalRecommendation = previouslyReceivedCocktails[randomIndex];
             
