@@ -14,14 +14,15 @@ const mapLevel = (level) => {
         '3': 'Strong (เข้มข้น)',
         '4': 'Hard Core (หนักมาก)'
     };
+    // แปลงให้เป็น String ก่อนค้นหา เพื่อรองรับข้อมูลที่อาจเป็นตัวเลข
     return levelMap[String(level)] || 'ไม่ระบุ'; 
 };
 
-// ฟังก์ชันสำหรับสร้าง HTML ไอคอนสี (คืนค่าเฉพาะไอคอนเท่านั้น!)
+// ฟังก์ชันสำหรับสร้าง HTML ไอคอนสี
 const getColorIconHtml = (colorName) => {
-    const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
+    const safeColorName = colorName ? colorName.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
     
-    // แก้ไข: เพิ่มการตรวจสอบคำภาษาอังกฤษเพื่อรองรับข้อมูลจาก Server เช่น 'coral pink'
+    // ตรวจสอบชื่อสีทั้งภาษาไทยและอังกฤษ
     if (safeColorName.includes('แดง') || safeColorName.includes('red')) return `<span class="color-icon color-red" title="สีแดง"></span>`;
     if (safeColorName.includes('ฟ้า') || safeColorName.includes('น้ำเงิน') || safeColorName.includes('blue')) return `<span class="color-icon color-blue" title="สีฟ้า/น้ำเงิน"></span>`;
     if (safeColorName.includes('เขียว') || safeColorName.includes('green')) return `<span class="color-icon color-green" title="สีเขียว"></span>`;
@@ -45,8 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageDisplay = document.getElementById('messageDisplay');
     const cocktailDetailsDiv = document.getElementById('cocktailDetails');
 
-    if (!cocktailNameInput || !searchButton) {
+    if (!cocktailNameInput || !searchButton || !messageDisplay || !cocktailDetailsDiv) {
         console.error("Missing required HTML elements.");
+        // ตั้งค่าข้อความแจ้งเตือนเมื่อหา Element ไม่เจอ
+        if (messageDisplay) messageDisplay.textContent = '❌ Error: ไม่พบส่วนประกอบ HTML (Input/Button/Display)';
         return;
     }
     
@@ -77,46 +80,71 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ name }),
             });
 
+            // ตรวจสอบสถานะการเชื่อมต่อ
+            if (!response.ok) {
+                // ถ้าสถานะไม่ใช่ 2xx ให้ดึงข้อความ Error จาก Server มาแสดง
+                const errorData = await response.json();
+                messageDisplay.textContent = `Error (${response.status}): ${errorData.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์'}`;
+                return;
+            }
+
             const data = await response.json();
 
-            if (response.ok) {
-                let html = ''; 
+            let html = ''; 
 
-                if (data.data && data.data.length > 0) {
-                    // ถ้าเจอข้อมูล: ใช้ข้อความจาก Server
-                    messageDisplay.textContent = data.message;
+            if (data.data && data.data.length > 0) {
+                // ถ้าเจอข้อมูล: ใช้ข้อความจาก Server
+                messageDisplay.textContent = data.message;
+                
+                data.data.forEach(item => {
+                    const itemClass = data.found ? 'cocktail-item found-match' : 'cocktail-item random-item';
+                    const levelText = mapLevel(item.level); 
+                    const colorHtml = getColorIconHtml(item.color);
                     
-                    data.data.forEach(item => {
-                        const itemClass = data.found ? 'cocktail-item found-match' : 'cocktail-item random-item';
-                        const levelText = mapLevel(item.level); 
-                        const colorHtml = getColorIconHtml(item.color);
-                        
-                        // แสดงผลลัพธ์
-                        html += `<div class="${itemClass}">
-                                    <h3 class="neon-result-name">${item.name || 'N/A'}</h3>
-                                    <hr class="neon-divider">
-                                    <p><strong>Description:</strong> ${item.description || 'N/A'}</p>
-                                    <p><strong>สี:</strong> ${colorHtml} ${item.color || 'N/A'}</p> 
-                                    <p><strong>Level:</strong> ${levelText}</p>
-                                    <p><strong>Base on:</strong> ${item['base on'] || 'N/A'}</p>
-                                    <p><strong>ส่วนผสม:</strong> ${item.ingredients || 'N/A'}</p>
-                                    <p><strong>คำแนะนำ:</strong> ${item.instructions || 'N/A'}</p>
-                                </div>`;
-                    });
-                } else {
-                    // ถ้าไม่พบข้อมูล: ใช้ข้อความที่แก้ไขใหม่
-                    messageDisplay.textContent = `ไม่พบเมนูสำหรับชื่อ "${name}"`;
-                    html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
-                }
-                
-                cocktailDetailsDiv.innerHTML = html; 
-                
+                    // เตรียมส่วนผสมให้พร้อมแสดงผล: ถ้าเป็น Array ให้ Join ด้วยคอมม่า
+                    const ingredientsContent = Array.isArray(item.ingredients) 
+                        ? item.ingredients.join(', ') 
+                        : (item.ingredients || 'N/A');
+
+                    // แสดงผลลัพธ์
+                    html += `
+                        <div class="${itemClass}">
+                            <h3 class="neon-result-name">${item.name || 'N/A'}</h3>
+                            <hr class="neon-divider">
+
+                            <p><strong>Description:</strong> ${item.description || 'N/A'}</p>
+                            
+                            <p><strong>สี:</strong> ${colorHtml} ${item.color || 'N/A'}</p> 
+                            
+                            <p><strong>Level:</strong> ${levelText}</p>
+                            
+                            ${item['base on'] ? `<p><strong>Base on:</strong> ${item['base on']}</p>` : ''}
+                            
+                            ${(ingredientsContent && ingredientsContent !== 'N/A') ? `
+                                <p>
+                                    <strong>ส่วนผสม:</strong>
+                                    ${ingredientsContent}
+                                </p>` : ''}
+
+                            ${(item.instructions && item.instructions !== 'N/A') ? `
+                                <p>
+                                    <strong>คำแนะนำ:</strong>
+                                    ${item.instructions}
+                                </p>` : ''}
+
+                        </div>`;
+                });
             } else {
-                messageDisplay.textContent = `Error: ${data.message || 'เกิดข้อผิดพลาดกับเซิร์ฟเวอร์'}`;
+                // ถ้าไม่พบข้อมูล: ใช้ข้อความที่แก้ไขใหม่
+                messageDisplay.textContent = `ไม่พบเมนูสำหรับชื่อ "${name}"`;
+                html = `<p class="neon-error-message">ไม่พบข้อมูลใดๆ ในระบบ</p>`;
             }
+            
+            cocktailDetailsDiv.innerHTML = html; 
+            
         } catch (error) {
             console.error('Fetch error:', error);
-            messageDisplay.textContent = 'ไม่สามารถเชื่อมต่อกับ Server ได้';
+            messageDisplay.textContent = 'ไม่สามารถเชื่อมต่อกับ Server ได้ (โปรดตรวจสอบ Backend Log)';
             cocktailDetailsDiv.innerHTML = ''; 
         }
     }
