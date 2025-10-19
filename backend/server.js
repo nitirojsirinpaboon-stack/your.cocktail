@@ -6,9 +6,7 @@
 const express = require('express');
 const cors = require('cors'); 
 const path = require('path');
-// ไม่ใช้ fs ในการจัดการประวัติแล้ว แต่ยังคงไว้สำหรับโหลด user.json
 const fs = require('fs'); 
-// ติดตั้ง 'redis' package สำหรับ External Cache
 const redis = require('redis');
 
 const app = express();
@@ -29,10 +27,11 @@ if (REDIS_URL) {
     redisClient.connect()
         .then(() => console.log('✅ Connected to Redis Cache.'))
         .catch(err => {
-            console.error('❌ Failed to connect to Redis:', err.message);
+            console.error('❌ Failed to connect to Redis. (Check REDIS_URL):', err.message);
             redisClient = null; // ปิดการใช้งาน Redis หากเชื่อมต่อไม่ได้
         });
 } else {
+    // หากไม่ตั้งค่า REDIS_URL ระบบจะไม่สามารถจำประวัติได้
     console.warn('⚠️ REDIS_URL not set. History persistence will fail upon server restart.');
 }
 
@@ -52,6 +51,7 @@ try {
     const data = fs.readFileSync(dataPath, 'utf8');
     cocktailData = JSON.parse(data);
     
+    // สร้าง Map สำหรับค้นหาเมนูจาก ID (ซึ่ง ID แต่ละตัวคือชื่อ+Level)
     cocktailData.forEach(item => {
         if (item.id) {
             cocktailMap.set(String(item.id), item);
@@ -74,7 +74,7 @@ try {
 const getUserHistory = async (userId) => {
     if (!redisClient) return { receivedIds: [] };
 
-    const key = `history:${userId}`;
+    const key = `history:${userId}`; // ใช้ User ID เป็น Key
     try {
         const data = await redisClient.get(key);
         if (data) {
@@ -84,7 +84,6 @@ const getUserHistory = async (userId) => {
     } catch (error) {
         console.error(`❌ Redis Get Error for ${userId}:`, error.message);
     }
-    // คืนค่าเริ่มต้นหากหาไม่เจอหรือเกิดข้อผิดพลาด
     return { receivedIds: [] };
 };
 
@@ -94,7 +93,7 @@ const saveUserHistory = async (userId, history) => {
 
     const key = `history:${userId}`;
     try {
-        // ทำให้ค่า ID เมนูไม่ซ้ำกันก่อนบันทึก
+        // บันทึกเฉพาะ ID เมนู โดยทำให้ค่าไม่ซ้ำกันก่อนบันทึก
         history.receivedIds = [...new Set(history.receivedIds.map(String))];
         const jsonString = JSON.stringify(history);
         
@@ -110,7 +109,7 @@ const saveUserHistory = async (userId, history) => {
 // *** 5. Route หลักสำหรับการค้นหา (Smart Random Logic V6.0) ***
 // ***************************************************************
 
-app.post('/search', async (req, res) => { // เปลี่ยนเป็น async function
+app.post('/search', async (req, res) => { 
     if (cocktailData.length === 0) {
         return res.status(503).json({ 
             message: 'Server Error: ไม่สามารถโหลดข้อมูลค็อกเทลได้',
@@ -118,7 +117,7 @@ app.post('/search', async (req, res) => { // เปลี่ยนเป็น a
         });
     }
     
-    const { name, userId } = req.body;
+    const { name, userId } = req.body; // userId ต้องส่งมาจาก Frontend (Local Storage)
     
     if (!name || !userId) {
         return res.status(400).json({ 
@@ -137,35 +136,35 @@ app.post('/search', async (req, res) => { // เปลี่ยนเป็น a
     // ***************************************************************
     if (foundMatches.length === 0) {
         
-        const userHistory = await getUserHistory(userId); // ต้อง await
+        const userHistory = await getUserHistory(userId); 
         const receivedIds = new Set(userHistory.receivedIds.map(String));
         let finalRecommendation = null;
         
-        // 1. หา Pool เมนูทั้งหมดที่ผู้ใช้ยังไม่เคยได้รับ (ไม่ซ้ำชื่อ)
+        // 1. หา Pool เมนูทั้งหมดที่ผู้ใช้ยังไม่เคยได้รับ (ไม่ซ้ำชื่อ/Level)
         let unseenCocktails = cocktailData.filter(item => 
             !receivedIds.has(String(item.id))
         );
         
         // ***************************************************************
-        // *** 2. หากยังมีเมนูที่ยังไม่เคยได้รับ (เข้าสู่โหมดสุ่ม Level ใหม่ก่อน) ***
+        // *** 2. โหมด: มีเมนูใหม่เหลืออยู่ (สุ่ม Level ที่ยังเหลืออยู่ก่อน) ***
         // ***************************************************************
         if (unseenCocktails.length > 0) {
             
-            // หา Level ที่มีเมนูเหลืออยู่ใน unseenCocktails
+            // หา Level ทั้งหมดที่ยังมีเมนูใหม่เหลืออยู่
             let remainingLevels = [...new Set(unseenCocktails.map(item => String(item.level)))];
             
-            // 2.1 สุ่มเลือก Level เป้าหมายจาก Level ที่เหลืออยู่
+            // สุ่ม Level เป้าหมาย
             const targetLevelIndex = Math.floor(Math.random() * remainingLevels.length);
             const targetLevel = remainingLevels[targetLevelIndex];
 
-            // 2.2 กรองเมนูเฉพาะใน Target Level นั้น ที่ยังไม่เคยได้รับ
+            // กรองเมนูเฉพาะใน Target Level ที่ยังไม่เคยได้รับ ID
             const candidates = unseenCocktails.filter(item => String(item.level) === targetLevel);
             
-            // สุ่ม 1 เมนูจากกลุ่มเมนู Level เป้าหมายนี้
+            // สุ่ม 1 เมนูจากกลุ่มเมนู Level เป้าหมายนี้ (ชื่อใหม่)
             const randomIndex = Math.floor(Math.random() * candidates.length);
             finalRecommendation = candidates[randomIndex];
             
-            // 2.3 บันทึก ID เมนูนี้ลงในประวัติผู้ใช้ (ใช้ await)
+            // บันทึก ID เมนูนี้ลงในประวัติผู้ใช้
             userHistory.receivedIds.push(String(finalRecommendation.id));
             await saveUserHistory(userId, userHistory); 
             
@@ -181,16 +180,16 @@ app.post('/search', async (req, res) => { // เปลี่ยนเป็น a
         }
         
         // ***************************************************************
-        // *** 3. โหมด: ครบทุก Level แล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
+        // *** 3. โหมด: ครบทุก Level/ชื่อแล้ว (สุ่มวนซ้ำเฉพาะเมนูในประวัติ) ***
+        // *** (รันเมื่อ unseenCocktails.length เป็น 0) ***
         // ***************************************************************
         
-        // 3.1 ดึงเมนูที่เคยได้รับทั้งหมดจาก ID ที่บันทึกไว้ในประวัติ
         const previouslyReceivedCocktails = userHistory.receivedIds
             .map(id => cocktailMap.get(id))
             .filter(item => item !== undefined); 
 
         if (previouslyReceivedCocktails.length > 0) {
-            // สุ่ม 1 เมนูจาก Pool เมนูที่เคยได้รับไปแล้วเท่านั้น
+            // สุ่ม 1 เมนูจาก Pool เมนูที่เคยได้รับไปแล้วเท่านั้น (วนซ้ำชื่อเดิม)
             const randomIndex = Math.floor(Math.random() * previouslyReceivedCocktails.length);
             finalRecommendation = previouslyReceivedCocktails[randomIndex];
             
